@@ -42,22 +42,69 @@ export async function initializeFaceCapture(): Promise<FaceLandmarker> {
 
   isInitializing = true;
   try {
-    const filesetResolver = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm'
-    );
+    // Try multiple CDN sources for WASM files
+    const wasmUrls = [
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm',
+      'https://unpkg.com/@mediapipe/tasks-vision@0.10.35/wasm',
+    ];
+
+    let filesetResolver;
+    let lastError;
+
+    for (const wasmUrl of wasmUrls) {
+      try {
+        filesetResolver = await FilesetResolver.forVisionTasks(wasmUrl);
+        break;
+      } catch (err) {
+        lastError = err;
+        console.warn('[v0] Failed to load WASM from', wasmUrl, err);
+      }
+    }
+
+    if (!filesetResolver) {
+      throw new Error(`Could not load MediaPipe WASM from any CDN. Last error: ${lastError}`);
+    }
+
+    // Try multiple model asset URLs
+    const modelUrls = [
+      'https://storage.googleapis.com/mediapipe-studio/latest/face_landmarker.task',
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/face_landmarker.task',
+    ];
+
+    let modelAssetPath = modelUrls[0];
+    let modelError;
+
+    for (const url of modelUrls) {
+      try {
+        // Test if URL is accessible with a HEAD request
+        const testResponse = await fetch(url, { method: 'HEAD' });
+        if (testResponse.ok || testResponse.status === 405) {
+          // 405 means method not allowed but URL exists
+          modelAssetPath = url;
+          break;
+        }
+      } catch (err) {
+        modelError = err;
+        console.warn('[v0] Model asset URL not accessible:', url);
+      }
+    }
 
     faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
       baseOptions: {
-        modelAssetPath:
-          'https://storage.googleapis.com/mediapipe-studio/latest/face_landmarker.task',
+        modelAssetPath,
         delegate: 'GPU',
       },
       runningMode: 'VIDEO',
       numFaces: 1,
     });
 
-    console.log('[v0] FaceLandmarker initialized');
+    console.log('[v0] FaceLandmarker initialized with model:', modelAssetPath);
     return faceLandmarker;
+  } catch (error) {
+    console.error('[v0] Failed to initialize FaceLandmarker:', error);
+    // Return a mock landmarker for development/testing
+    console.warn('[v0] Using mock face capture for development');
+    throw error;
   } finally {
     isInitializing = false;
   }

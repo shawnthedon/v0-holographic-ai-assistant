@@ -23,6 +23,7 @@ export function FaceCapture({ onCaptureSent }: FaceCaptureProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [modelError, setModelError] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<
     'idle' | 'capturing' | 'uploading' | 'complete' | 'error'
   >('idle');
@@ -81,20 +82,35 @@ export function FaceCapture({ onCaptureSent }: FaceCaptureProps) {
     if (!isOpen || !videoRef.current || !canvasRef.current) return;
 
     const updateMesh = async () => {
-      if (videoRef.current && canvasRef.current) {
-        const mesh = await captureFaceMesh(videoRef.current);
-        if (mesh) {
-          setConfidence(mesh.confidence);
-          drawFaceMesh(
-            canvasRef.current,
-            mesh,
-            videoRef.current.videoWidth,
-            videoRef.current.videoHeight
-          );
+      try {
+        if (videoRef.current && canvasRef.current) {
+          const mesh = await captureFaceMesh(videoRef.current);
+          if (mesh) {
+            setConfidence(mesh.confidence);
+            drawFaceMesh(
+              canvasRef.current,
+              mesh,
+              videoRef.current.videoWidth,
+              videoRef.current.videoHeight
+            );
+          }
         }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to capture face mesh';
+        console.error('[v0] Face mesh capture error:', err);
+        setModelError(message);
       }
       animationFrameRef.current = requestAnimationFrame(updateMesh);
     };
+
+    // Attempt initialization on first open
+    if (videoRef.current) {
+      captureFaceMesh(videoRef.current).catch((err) => {
+        const message = err instanceof Error ? err.message : 'Failed to initialize face capture';
+        console.error('[v0] Face capture initialization failed:', err);
+        setModelError(message);
+      });
+    }
 
     animationFrameRef.current = requestAnimationFrame(updateMesh);
 
@@ -219,6 +235,28 @@ export function FaceCapture({ onCaptureSent }: FaceCaptureProps) {
 
               {/* Content */}
               <div className="p-6 space-y-6">
+                {/* Model Error */}
+                {modelError && (
+                  <motion.div
+                    className="p-4 rounded-lg bg-orange-400/10 border border-orange-400/30 text-orange-300 text-sm"
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    <p className="font-mono text-xs mb-2">⚠️ Face Detection Issue</p>
+                    <p className="font-mono text-xs mb-2">{modelError}</p>
+                    <p className="text-xs text-gray-400 mb-2">
+                      Face detection is not available in this environment. You can still use the
+                      voice cloning feature. Check your internet connection or try again later.
+                    </p>
+                    <button
+                      onClick={() => setModelError(null)}
+                      className="mt-2 text-xs px-2 py-1 bg-orange-400/20 rounded border border-orange-400/30 hover:bg-orange-400/30"
+                    >
+                      Dismiss
+                    </button>
+                  </motion.div>
+                )}
+
                 {/* Camera Error */}
                 {cameraError && (
                   <motion.div
@@ -295,12 +333,17 @@ export function FaceCapture({ onCaptureSent }: FaceCaptureProps) {
                 {/* Record Button */}
                 <button
                   onClick={handleRecordToggle}
-                  disabled={cameraError !== null || uploadStatus === 'uploading'}
+                  disabled={
+                    cameraError !== null ||
+                    modelError !== null ||
+                    uploadStatus === 'uploading'
+                  }
                   className={`w-full py-3 rounded-lg font-mono text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
                     isRecording
                       ? 'bg-red-400/20 border border-red-400/50 text-red-300 hover:bg-red-400/30'
                       : 'bg-cyan-400/20 border border-cyan-400/50 text-cyan-300 hover:bg-cyan-400/30 disabled:opacity-50 disabled:cursor-not-allowed'
                   }`}
+                  title={modelError ? 'Face detection unavailable' : 'Capture your face'}
                 >
                   {isRecording ? (
                     <>
