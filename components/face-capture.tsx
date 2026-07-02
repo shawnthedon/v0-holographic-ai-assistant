@@ -76,12 +76,14 @@ export function FaceCapture({ onCaptureSent }: FaceCaptureProps) {
   }, []);
 
   /**
-   * Real-time mesh visualization loop
+   * Real-time mesh visualization loop - only when recording
    */
   useEffect(() => {
-    if (!isOpen || !videoRef.current || !canvasRef.current) return;
+    if (!isOpen || !isRecording || !videoRef.current || !canvasRef.current) return;
 
+    let isMounted = true;
     const updateMesh = async () => {
+      if (!isMounted) return;
       try {
         if (videoRef.current && canvasRef.current) {
           const mesh = await captureFaceMesh(videoRef.current);
@@ -96,30 +98,25 @@ export function FaceCapture({ onCaptureSent }: FaceCaptureProps) {
           }
         }
       } catch (err) {
+        if (!isMounted) return;
         const message = err instanceof Error ? err.message : 'Failed to capture face mesh';
         console.error('[v0] Face mesh capture error:', err);
         setModelError(message);
       }
-      animationFrameRef.current = requestAnimationFrame(updateMesh);
+      if (isMounted) {
+        animationFrameRef.current = requestAnimationFrame(updateMesh);
+      }
     };
-
-    // Attempt initialization on first open
-    if (videoRef.current) {
-      captureFaceMesh(videoRef.current).catch((err) => {
-        const message = err instanceof Error ? err.message : 'Failed to initialize face capture';
-        console.error('[v0] Face capture initialization failed:', err);
-        setModelError(message);
-      });
-    }
 
     animationFrameRef.current = requestAnimationFrame(updateMesh);
 
     return () => {
+      isMounted = false;
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isOpen]);
+  }, [isOpen, isRecording]);
 
   /**
    * Handle recording and upload
@@ -134,9 +131,22 @@ export function FaceCapture({ onCaptureSent }: FaceCaptureProps) {
     setIsRecording(true);
     setUploadStatus('capturing');
     setFrameCount(0);
+    setModelError(null);
 
     try {
       if (!videoRef.current) throw new Error('Video element not ready');
+
+      // Initialize face capture on first recording attempt
+      try {
+        await captureFaceMesh(videoRef.current);
+      } catch (initErr) {
+        const initMessage = initErr instanceof Error ? initErr.message : 'Failed to initialize face detection';
+        setModelError(initMessage);
+        setIsRecording(false);
+        setUploadStatus('error');
+        console.error('[v0] Face capture initialization failed:', initErr);
+        throw new Error(initMessage);
+      }
 
       // Capture 60 frames (2 seconds at 30 FPS)
       const meshes = await captureFramesBatch(videoRef.current, 2000, {

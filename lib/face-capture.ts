@@ -57,12 +57,12 @@ export async function initializeFaceCapture(): Promise<FaceLandmarker> {
         break;
       } catch (err) {
         lastError = err;
-        console.warn('[v0] Failed to load WASM from', wasmUrl, err);
+        // Silent fail on individual URLs, will throw if all fail
       }
     }
 
     if (!filesetResolver) {
-      throw new Error(`Could not load MediaPipe WASM from any CDN. Last error: ${lastError}`);
+      throw new Error('MediaPipe WASM failed to load. Face detection is unavailable in this environment.');
     }
 
     // Try multiple model asset URLs
@@ -72,20 +72,20 @@ export async function initializeFaceCapture(): Promise<FaceLandmarker> {
     ];
 
     let modelAssetPath = modelUrls[0];
-    let modelError;
 
     for (const url of modelUrls) {
       try {
-        // Test if URL is accessible with a HEAD request
-        const testResponse = await fetch(url, { method: 'HEAD' });
+        // Test if URL is accessible with a HEAD request (silent timeout - default behavior)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const testResponse = await fetch(url, { method: 'HEAD', signal: controller.signal });
+        clearTimeout(timeoutId);
         if (testResponse.ok || testResponse.status === 405) {
-          // 405 means method not allowed but URL exists
           modelAssetPath = url;
           break;
         }
       } catch (err) {
-        modelError = err;
-        console.warn('[v0] Model asset URL not accessible:', url);
+        // Silent fail - continue to next URL
       }
     }
 
@@ -98,12 +98,9 @@ export async function initializeFaceCapture(): Promise<FaceLandmarker> {
       numFaces: 1,
     });
 
-    console.log('[v0] FaceLandmarker initialized with model:', modelAssetPath);
     return faceLandmarker;
   } catch (error) {
-    console.error('[v0] Failed to initialize FaceLandmarker:', error);
-    // Return a mock landmarker for development/testing
-    console.warn('[v0] Using mock face capture for development');
+    // Silently fail - error will be caught when user attempts to record
     throw error;
   } finally {
     isInitializing = false;
