@@ -5,6 +5,7 @@ import React from "react"
 import { useState } from 'react';
 import { X, Upload } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { GatewayConfig } from './gateway-config';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -42,6 +43,7 @@ export function SettingsPanel({
   onVoicePromptChange,
   onRolePromptChange,
 }: SettingsPanelProps) {
+  const [activeTab, setActiveTab] = useState<'general' | 'gateway' | 'knowledge'>('general');
   const [llmModel, setLlmModel] = useState(externalLlmModel || 'gemini-2.0-flash');
   const [voiceProvider, setVoiceProvider] = useState(externalVoiceProvider || 'google');
   const [speechSpeed, setSpeechSpeed] = useState(externalSpeechSpeed || 1);
@@ -188,19 +190,45 @@ export function SettingsPanel({
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           >
             {/* Header */}
-            <div className="sticky top-0 flex items-center justify-between p-6 border-b border-cyan-400/20 bg-slate-950/95 backdrop-blur">
-              <h2 className="text-lg font-semibold text-white">Advanced Settings</h2>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-cyan-400 transition-colors"
-              >
-                <X size={20} />
-              </button>
+            <div className="sticky top-0 border-b border-cyan-400/20 bg-slate-950/95 backdrop-blur">
+              <div className="flex items-center justify-between p-6 border-b border-cyan-400/20">
+                <h2 className="text-lg font-semibold text-white">Advanced Settings</h2>
+                <button
+                  onClick={onClose}
+                  className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-cyan-400 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              {/* Tab Navigation */}
+              <div className="flex gap-0 px-6 pb-0">
+                {[
+                  { id: 'general' as const, label: 'General' },
+                  { id: 'gateway' as const, label: 'LLM Gateway' },
+                  { id: 'knowledge' as const, label: 'Knowledge Base' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-4 py-3 text-sm font-mono border-b-2 transition-colors ${
+                      activeTab === tab.id
+                        ? 'border-cyan-400 text-cyan-400'
+                        : 'border-transparent text-gray-400 hover:text-cyan-400'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Content */}
             <div className="p-6 space-y-8">
-              {/* LLM Selection */}
+              {/* General Tab */}
+              {activeTab === 'general' && (
+                <>
+                  {/* LLM Selection */}
               <div>
                 <label className="block text-sm font-mono text-cyan-400 mb-3">
                   LLM Model
@@ -372,8 +400,25 @@ export function SettingsPanel({
                   className="w-full px-3 py-2 text-xs bg-slate-800 border border-slate-600 rounded text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400/50 resize-none h-24"
                 />
               </div>
+                </>
+              )}
 
-              {/* Knowledge Base Upload */}
+              {/* Gateway Tab */}
+              {activeTab === 'gateway' && (
+                <div className="space-y-6 pb-6">
+                  <p className="text-sm text-gray-400">
+                    Configure unified LLM gateway access. Supports 500+ models from OpenRouter, Hugging Face, AWS Bedrock, and more.
+                  </p>
+                  <GatewayConfig onConfigChange={(provider, model) => {
+                    console.log('[v0] Gateway config changed:', provider, model);
+                  }} />
+                </div>
+              )}
+
+              {/* Knowledge Base Tab */}
+              {activeTab === 'knowledge' && (
+                <>
+                  {/* Knowledge Base Upload */}
               <div>
                 <label className="block text-sm font-mono text-cyan-400 mb-3">
                   Knowledge Base (RAG)
@@ -488,15 +533,17 @@ export function SettingsPanel({
                 )}
               </div>
 
-              {/* WebSocket Status */}
-              <div className="p-3 rounded-lg bg-slate-900 border border-slate-700">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-xs text-gray-300 font-mono">
-                    Backend Connected
-                  </span>
-                </div>
-              </div>
+                  {/* WebSocket Status */}
+                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-700">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                      <span className="text-xs text-gray-300 font-mono">
+                        Backend Connected
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </motion.div>
         </>

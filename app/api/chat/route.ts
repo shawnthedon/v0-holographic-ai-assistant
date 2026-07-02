@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createGatewayService } from '@/lib/unified-gateway';
+import { createConfigManager } from '@/lib/gateway-config-manager';
 
 interface ChatRequest {
   message: string;
-  model: string;
+  model?: string;
   endpoint?: string;
   messages?: Array<{ role: string; content: string }>;
 }
@@ -10,9 +12,10 @@ interface ChatRequest {
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequest = await request.json();
-    const { message, model, endpoint, messages = [] } = body;
+    const { message, messages = [] } = body;
+    const userId = request.headers.get('x-user-id') || 'default';
 
-    console.log('[v0] Chat API called with model:', model);
+    console.log('[v0] Chat API called with user:', userId);
 
     if (!message) {
       return NextResponse.json(
@@ -21,147 +24,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Route to appropriate LLM provider
-    let response: string;
+    // Load gateway configuration for the user
+    const configManager = createConfigManager();
+    const gatewayConfig = await configManager.loadConfig(userId);
 
-    if (model === 'gemini-2.0-flash') {
-      response = await callGemini(message, messages);
-    } else if (model === 'gpt-4o') {
-      response = await callOpenAI(message, messages);
-    } else if (model === 'custom' && endpoint) {
-      response = await callCustomEndpoint(message, messages, endpoint);
-    } else {
-      // Default to Gemini
-      response = await callGemini(message, messages);
+    if (!gatewayConfig) {
+      return NextResponse.json(
+        { error: 'No gateway configuration found. Please configure LLM provider in settings.' },
+        { status: 400 }
+      );
     }
 
-    return NextResponse.json({ response });
+    // Create unified gateway service with user's configuration
+    const gateway = createGatewayService(gatewayConfig);
+
+    // Prepare conversation messages
+    const conversationMessages = [
+      ...messages.map((msg) => ({
+        role: msg.role as 'user' | 'assistant' | 'system',
+        content: msg.content,
+      })),
+      { role: 'user' as const, content: message },
+    ];
+
+    // Call the unified gateway
+    const response = await gateway.chat({
+      messages: conversationMessages,
+      maxTokens: 1024,
+      temperature: 0.9,
+    });
+
+    const assistantMessage = response.choices?.[0]?.message?.content || 'No response generated';
+
+    return NextResponse.json({ 
+      response: assistantMessage,
+      model: response.model,
+      provider: gatewayConfig.provider,
+    });
   } catch (error) {
     console.error('[v0] Chat API error:', error);
     return NextResponse.json(
-      { error: 'Failed to process chat request' },
+      { error: error instanceof Error ? error.message : 'Failed to process chat request' },
       { status: 500 }
     );
   }
-}
-
-async function callGemini(
-  message: string,
-  messages: Array<{ role: string; content: string }>
-): Promise<string> {
-  const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
-    throw new Error('GOOGLE_API_KEY not configured');
-  }
-
-  const conversationHistory = messages.map((msg) => ({
-    role: msg.role === 'user' ? 'user' : 'model',
-    parts: [{ text: msg.content }],
-  }));
-
-  conversationHistory.push({
-    role: 'user',
-    parts: [{ text: message }],
-  });
-
-  const response = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        contents: conversationHistory,
-        generationConfig: {
-          temperature: 0.9,
-          maxOutputTokens: 1024,
-        },
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Gemini API error: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated';
-}
-
-async function callOpenAI(
-  message: string,
-  messages: Array<{ role: string; content: string }>
-): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY not configured');
-  }
-
-  const conversationHistory = messages.map((msg) => ({
-    role: msg.role,
-    content: msg.content,
-  }));
-
-  conversationHistory.push({
-    role: 'user',
-    content: message,
-  });
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: conversationHistory,
-      temperature: 0.9,
-      max_tokens: 1024,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`OpenAI API error: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || 'No response generated';
-}
-
-async function callCustomEndpoint(
-  message: string,
-  messages: Array<{ role: string; content: string }>,
-  endpoint: string
-): Promise<string> {
-  const conversationHistory = messages.map((msg) => ({
-    role: msg.role,
-    content: msg.content,
-  }));
-
-  conversationHistory.push({
-    role: 'user',
-    content: message,
-  });
-
-  const response = await fetch(`${endpoint}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messages: conversationHistory,
-      temperature: 0.9,
-      max_tokens: 1024,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Custom endpoint error: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || 'No response generated';
 }
