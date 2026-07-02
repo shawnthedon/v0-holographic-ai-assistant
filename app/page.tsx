@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { AvatarScene } from '@/components/avatar-scene';
 import { ControlMenu } from '@/components/control-menu';
 import { SettingsPanel } from '@/components/settings-panel';
+import { FaceCapture } from '@/components/face-capture';
 import { useAiAssistant, type LLMModel, type VoiceProvider } from '@/hooks/use-ai-assistant';
 import { useFullDuplexAudio } from '@/hooks/use-full-duplex-audio';
 import { usePersonaPlex } from '@/hooks/use-persona-plex';
@@ -230,6 +231,9 @@ export default function Home() {
           }
         }}
       />
+
+      {/* Face Capture Component */}
+      <FaceCapture />
 
       {/* Settings Panel */}
       <SettingsPanel
