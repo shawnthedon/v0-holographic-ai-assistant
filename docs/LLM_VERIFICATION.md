@@ -177,9 +177,21 @@ POST /api/speech (no key)                 → 503 no-credential + fix
 ### 4.6 Production
 
 The deployed project currently has **no environment variables**
-(`vercel.list_env_vars` → `envs: []`), so the production sweep reports every
-model `BLOCK`ed with `no-credential`. That is the honest state, and it is the
-single action that unlocks every hosted model — see §5.1.
+(`vercel.list_env_vars` → `envs: []`). Running the sweep against production
+returns, verbatim:
+
+```
+GET https://v0-holographic-ai-assistant-two.vercel.app/api/llm/verify?probe=1&discover=1
+runtime  node v24.21.0 · region iad1
+summary  { models: 30, configured: 0, probed: 0, passed: 0, failed: 0, blocked: 30 }
+per model: openrouter/* → no-credential (OPENROUTER_API_KEY unset)
+           vllm/*, ollama/* → config-error (VLLM_BASE_URL / OLLAMA_BASE_URL unset)
+           bedrock/* → unsupported-provider (SigV4)
+```
+
+Nothing is probed because nothing is configured — and nothing is *reported as
+working* either, which is the point. This is the single action that unlocks
+every hosted model — see §5.1.
 
 ---
 
