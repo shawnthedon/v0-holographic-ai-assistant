@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScanLine } from 'lucide-react';
+import { ScanLine, TriangleAlert, X } from 'lucide-react';
 import { HudBackdrop } from '@/components/hud/backdrop';
 import { BootSequence, Reveal } from '@/components/hud/boot-sequence';
 import { HudPanel, ScanHeader, TickColumn } from '@/components/hud/chrome';
@@ -46,6 +46,7 @@ export default function Home() {
   const [clock, setClock] = useState('--:--:--');
 
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [dismissedError, setDismissedError] = useState<string | null>(null);
   const {
     models: catalogueModels,
     providers: catalogueProviders,
@@ -99,7 +100,14 @@ export default function Home() {
     autoGainControl: true,
   });
 
-  const { isListening, isProcessing, messages, toggleMicrophone, sendMessage } = useAiAssistant({
+  const {
+    isListening,
+    isProcessing,
+    messages,
+    error: assistantError,
+    toggleMicrophone,
+    sendMessage,
+  } = useAiAssistant({
     model: selectedModelId,
     voiceProvider,
     speechSpeed,
@@ -422,6 +430,24 @@ export default function Home() {
       </div>
 
       {/* ---------------------------- overlays ---------------------------- */}
+      {/* A failed model call must be visible: the route returns { error, code, fix } */}
+      {assistantError && assistantError !== dismissedError && (
+        <div className="pointer-events-auto fixed inset-x-3 bottom-[112px] z-[66] mx-auto flex w-fit max-w-[min(94vw,680px)] items-start gap-2 rounded border border-[#ff9d7a]/50 bg-[#1a0a05]/95 px-3 py-2 shadow-[0_0_40px_rgba(255,157,122,0.18)] backdrop-blur-sm">
+          <TriangleAlert size={13} className="mt-[2px] flex-none text-[#ff9d7a]" />
+          <p className="font-mono text-[8px] uppercase leading-[1.7] tracking-[0.14em] text-[#ffd9c9]">
+            {assistantError}
+          </p>
+          <button
+            type="button"
+            onClick={() => setDismissedError(assistantError)}
+            aria-label="Dismiss error"
+            className="ml-1 flex-none rounded border border-[#ff9d7a]/40 p-1 text-[#ff9d7a] transition hover:bg-[#ff9d7a]/15"
+          >
+            <X size={10} />
+          </button>
+        </div>
+      )}
+
       <CommandDock
         live={live}
         thinking={thinking}
