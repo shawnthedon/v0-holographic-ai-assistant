@@ -174,7 +174,7 @@ export function SettingsPanel({
         <>
           {/* Backdrop */}
           <motion.div
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40"
+            className="fixed inset-0 z-40 bg-black/75 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -183,26 +183,34 @@ export function SettingsPanel({
 
           {/* Panel */}
           <motion.div
-            className="fixed inset-y-0 right-0 w-full max-w-md bg-slate-950 border-l border-cyan-400/30 z-50 overflow-y-auto"
+            className="hud-sheet hud-scroll fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto border-l border-[color:var(--hud-line-strong)]"
             initial={{ x: 400 }}
             animate={{ x: 0 }}
             exit={{ x: 400 }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           >
             {/* Header */}
-            <div className="sticky top-0 border-b border-cyan-400/20 bg-slate-950/95 backdrop-blur">
-              <div className="flex items-center justify-between p-6 border-b border-cyan-400/20">
-                <h2 className="text-lg font-semibold text-white">Advanced Settings</h2>
+            <div className="sticky top-0 border-b border-[color:var(--hud-line)] bg-[#02090d]/95 backdrop-blur">
+              <div className="flex items-center justify-between border-b border-[color:var(--hud-line)] px-5 py-4">
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-mono text-[6.5px] uppercase tracking-[0.34em] text-[color:var(--hud-ink-dim)]">
+                    nexus // configuration
+                  </span>
+                  <h2 className="font-mono text-[11px] uppercase tracking-[0.28em] text-[color:var(--hud-ink)]">
+                    advanced settings
+                  </h2>
+                </div>
                 <button
                   onClick={onClose}
-                  className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-cyan-400 transition-colors"
+                  className="flex h-7 w-7 items-center justify-center rounded border border-[color:var(--hud-line)] text-[color:var(--hud-ink-dim)] transition-colors duration-150 hover:border-[color:var(--hud-ink)]/60 hover:text-[color:var(--hud-ink)] active:scale-95"
+                  aria-label="Close settings"
                 >
-                  <X size={20} />
+                  <X size={14} />
                 </button>
               </div>
               
               {/* Tab Navigation */}
-              <div className="flex gap-0 px-6 pb-0 overflow-x-auto">
+              <div className="flex gap-0 overflow-x-auto px-3 pb-0">
                 {[
                   { id: 'general' as const, label: 'General' },
                   { id: 'gateway' as const, label: 'LLM Gateway' },
@@ -213,10 +221,10 @@ export function SettingsPanel({
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`px-4 py-3 text-sm font-mono border-b-2 transition-colors ${
+                    className={`whitespace-nowrap border-b px-3 py-2.5 font-mono text-[8px] uppercase tracking-[0.24em] transition-colors duration-150 ${
                       activeTab === tab.id
-                        ? 'border-cyan-400 text-cyan-400'
-                        : 'border-transparent text-gray-400 hover:text-cyan-400'
+                        ? 'border-[color:var(--hud-lime)] text-[color:var(--hud-lime)]'
+                        : 'border-transparent text-[color:var(--hud-ink-dim)] hover:text-[color:var(--hud-ink)]'
                     }`}
                   >
                     {tab.label}

@@ -13,14 +13,27 @@ import {
 
 interface FaceCaptureProps {
   onCaptureSent?: (frameCount: number) => void;
+  /** Controlled open state — lets the HUD dock drive this panel. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Hide the legacy floating trigger when the dock owns the entry point. */
+  hideTrigger?: boolean;
 }
 
-export function FaceCapture({ onCaptureSent }: FaceCaptureProps) {
+export function FaceCapture({ onCaptureSent, open, onOpenChange, hideTrigger }: FaceCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = open ?? internalOpen;
+  const setIsOpen = useCallback(
+    (next: boolean) => {
+      if (open === undefined) setInternalOpen(next);
+      onOpenChange?.(next);
+    },
+    [onOpenChange, open],
+  );
   const [isRecording, setIsRecording] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
@@ -201,6 +214,7 @@ export function FaceCapture({ onCaptureSent }: FaceCaptureProps) {
   return (
     <>
       {/* Floating Button */}
+      {!hideTrigger && (
       <motion.button
         onClick={handleOpen}
         className="fixed bottom-24 right-6 w-12 h-12 rounded-full bg-gradient-to-r from-cyan-400/20 to-purple-400/20 border border-cyan-400/50 flex items-center justify-center text-cyan-400 hover:from-cyan-400/30 hover:to-purple-400/30 transition-colors z-40"
@@ -210,6 +224,7 @@ export function FaceCapture({ onCaptureSent }: FaceCaptureProps) {
       >
         <Camera size={20} />
       </motion.button>
+      )}
 
       {/* Face Capture Panel */}
       <AnimatePresence>
