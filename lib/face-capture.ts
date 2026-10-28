@@ -136,15 +136,18 @@ export async function captureFaceMesh(
       return null;
     }
 
+    // MediaPipe types Classifications as a weighted-label container rather
+    // than an array; read the entries we care about explicitly.
+    const categories = (blendshapes as unknown as {
+      categories?: Array<{ categoryName: string; score: number }>;
+    }).categories;
+
     return {
       landmarks,
-      blendshapes: blendshapes.reduce(
-        (acc, shape) => {
-          acc[shape.categoryName] = shape.score;
-          return acc;
-        },
-        {} as Record<string, number>
-      ),
+      blendshapes: (categories ?? []).reduce<Record<string, number>>((acc, shape) => {
+        acc[shape.categoryName] = shape.score;
+        return acc;
+      }, {}),
       confidence: avgConfidence,
     };
   } catch (error) {

@@ -3,10 +3,10 @@ import { agentEngineFactory } from '@/lib/agent-engine';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { agentId: string } }
+  { params }: { params: Promise<{ agentId: string }> }
 ) {
   try {
-    const { agentId } = params;
+    const { agentId } = await params;
 
     const agent = agentEngineFactory.getAgent(agentId);
     if (!agent) {

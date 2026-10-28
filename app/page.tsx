@@ -24,12 +24,14 @@ import {
   SessionPanel,
 } from '@/components/hud/readouts';
 import { SettingsPanel } from '@/components/settings-panel';
+import { ModelPicker } from '@/components/hud/model-picker';
 import { FaceCapture } from '@/components/face-capture';
 import { useAiAssistant, type LLMModel, type VoiceProvider } from '@/hooks/use-ai-assistant';
 import { useFullDuplexAudio } from '@/hooks/use-full-duplex-audio';
 import { usePersonaPlex } from '@/hooks/use-persona-plex';
 import { useAgentManager } from '@/hooks/use-agent-manager';
 import { useUptime, useLiveTitle } from '@/hooks/use-hud-telemetry';
+import { useModelCatalogue } from '@/hooks/use-model-catalogue';
 import { telemetry } from '@/lib/hud/telemetry';
 import type { AvatarMode } from '@/lib/hud/avatar-face';
 
@@ -43,7 +45,19 @@ export default function Home() {
   const [scanPass, setScanPass] = useState(1);
   const [clock, setClock] = useState('--:--:--');
 
-  const [llmModel, setLlmModel] = useState<LLMModel>('gemini-2.0-flash');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const {
+    models: catalogueModels,
+    providers: catalogueProviders,
+    selectedModelId,
+    selected: selectedModel,
+    select: selectModel,
+    loading: catalogueLoading,
+    discover,
+    discovering,
+    discoverError,
+    reload: reloadCatalogue,
+  } = useModelCatalogue();
   const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>('google');
   const [speechSpeed, setSpeechSpeed] = useState(1);
   const [customEndpoint, setCustomEndpoint] = useState('');
@@ -86,7 +100,7 @@ export default function Home() {
   });
 
   const { isListening, isProcessing, messages, toggleMicrophone, sendMessage } = useAiAssistant({
-    model: llmModel,
+    model: selectedModelId,
     voiceProvider,
     speechSpeed,
     customEndpoint,
@@ -340,7 +354,15 @@ export default function Home() {
                   <div className="border-t border-[color:var(--hud-line)] pt-1.5 font-mono text-[6px] uppercase leading-[1.7] tracking-[0.2em] text-[color:var(--hud-ink-dim)]">
                     <div className="flex items-center justify-between gap-2">
                       <span>model</span>
-                      <span className="truncate text-[color:var(--hud-ink)]">{llmModel}</span>
+                      <span className="truncate text-[color:var(--hud-ink)]">
+                        {selectedModel?.label ?? (catalogueLoading ? 'loading…' : 'none')}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>core</span>
+                      <span className="truncate text-[color:var(--hud-ink)]">
+                        {selectedModel?.provider ?? '—'}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span>voice</span>
@@ -415,6 +437,25 @@ export default function Home() {
         }}
         onSettings={() => setIsSettingsOpen(true)}
         onDeepScan={deepScan}
+        onModels={() => setPickerOpen(true)}
+        modelLabel={selectedModel?.label}
+      />
+
+      <ModelPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        models={catalogueModels}
+        providers={catalogueProviders}
+        selectedModelId={selectedModelId}
+        onSelect={(id) => {
+          selectModel(id);
+          telemetry.logEvent(`model switched · ${id}`);
+        }}
+        onDiscover={discover}
+        discoverError={discoverError}
+        discovering={discovering}
+        onReload={reloadCatalogue}
+        loading={catalogueLoading}
       />
 
       <ConsolePanel
@@ -427,7 +468,7 @@ export default function Home() {
           sendMessage(value);
         }}
         thinking={thinking}
-        model={llmModel}
+        model={selectedModel?.label ?? selectedModelId}
       />
 
       <FaceCapture
@@ -444,8 +485,10 @@ export default function Home() {
       <SettingsPanel
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        llmModel={llmModel}
-        onLlmModelChange={(model) => setLlmModel(model as LLMModel)}
+        llmModel={selectedModelId}
+        onLlmModelChange={(model) => selectModel(model)}
+        models={catalogueModels}
+        onOpenModelCatalogue={() => setPickerOpen(true)}
         voiceProvider={voiceProvider}
         onVoiceProviderChange={(provider) => setVoiceProvider(provider as VoiceProvider)}
         speechSpeed={speechSpeed}

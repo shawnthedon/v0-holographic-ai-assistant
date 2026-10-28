@@ -49,6 +49,44 @@ change never re-renders the page.
 | insight log | health transitions, long tasks, channel open/close, duplex socket, operator actions |
 | session counters | eased odometers over inputs / messages / scans / agents |
 
+## Models — pick any inference core
+
+The console is not tied to one vendor. `lib/llm/` holds a provider-agnostic
+adapter layer: **OpenAI-compatible** (OpenRouter, OpenAI, Groq, Mistral, DeepSeek,
+Together, Hugging Face, Ollama, vLLM, LiteLLM, any custom endpoint), **Anthropic**
+(`/v1/messages` + `x-api-key`), **Google Gemini** (`:generateContent`) and
+**Cohere** (`/v2/chat`). AWS Bedrock is declared unsupported and refuses locally
+instead of being sent a request it cannot understand.
+
+Open the model catalogue from the dock (`modes` → model) or Settings → Models.
+Every entry shows where inference runs (`cloud` / `self-hosted` / `on-device`),
+its roles, context window, whether this deployment holds a credential, and a
+`verified` badge once that model has actually answered. **`list`** asks a
+provider what it really serves and merges the result into the list (`live`), so
+a newly released model is selectable without a code change. **`verify all`** runs
+the system-wide sweep in the browser and tags each model `pass`, `fail` + error
+code, or `blocked`.
+
+The selection is a model id sent per request (`POST /api/chat { model }`) and
+resolved server-side — the browser never holds a provider credential. With no
+model named the server uses `DEFAULT_LLM_MODEL`, else the last model that
+answered, else the first provider that has a key.
+
+| what | where |
+|---|---|
+| provider registry + adapters | `lib/llm/providers.ts` |
+| curated catalogue | `lib/llm/catalogue.ts` |
+| credentials (env → user override → none) | `lib/llm/credentials.ts` |
+| resolution, chat, streaming, sweep | `lib/llm/service.ts` |
+| routes | `/api/models`, `/api/chat`, `/api/llm/verify` |
+| CLI sweep | `node scripts/verify-llm.mjs --base <url> --probe` |
+
+Every failure is a machine-readable contract — `{ error, code, fix }`:
+`no-credential` (503), `unknown-model` (404), `auth-failed` (401),
+`rate-limited` (429), `unsupported-provider` (501), `provider-error` (502). The
+full audit, the issues found and the remediation for each are in
+[`docs/LLM_VERIFICATION.md`](docs/LLM_VERIFICATION.md).
+
 ## The avatar
 
 `lib/hud/avatar-face.ts` drives a three.js face rig rendered into the projector

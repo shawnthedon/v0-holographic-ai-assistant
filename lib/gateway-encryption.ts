@@ -10,7 +10,7 @@ const AUTH_TAG_LENGTH = 16;
 const IV_LENGTH = 12;
 const SALT_LENGTH = 32;
 
-interface EncryptedData {
+export interface EncryptedData {
   iv: string; // base64
   authTag: string; // base64
   salt: string; // base64

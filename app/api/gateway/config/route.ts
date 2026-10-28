@@ -23,8 +23,12 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[v0] Gateway config GET error:', error);
     return NextResponse.json(
-      { error: 'Failed to retrieve gateway configuration' },
-      { status: 500 }
+      {
+        error: error instanceof Error ? error.message : 'Failed to retrieve gateway configuration',
+        code: 'gateway-config-error',
+        fix: 'Stored gateway configs are ephemeral per instance. Prefer provider environment variables (e.g. OPENROUTER_API_KEY) or set GATEWAY_ENCRYPTION_KEY to enable saved keys.',
+      },
+      { status: 503 }
     );
   }
 }
@@ -63,10 +67,18 @@ export async function POST(request: NextRequest) {
       config,
     });
   } catch (error) {
-    console.error('[v0] Gateway config POST error:', error);
+    const message = error instanceof Error ? error.message : 'Failed to save gateway configuration';
+    const missingKey = message.includes('GATEWAY_ENCRYPTION_KEY');
+    console.error('[v0] Gateway config POST error:', message);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to save gateway configuration' },
-      { status: 500 }
+      {
+        error: message,
+        code: missingKey ? 'missing-encryption-key' : 'gateway-config-error',
+        fix: missingKey
+          ? 'Set GATEWAY_ENCRYPTION_KEY (≥16 chars) in the deployment, or skip saved keys and set the provider key as an environment variable instead.'
+          : 'Inspect the server log for the encryption/decryption failure.',
+      },
+      { status: missingKey ? 503 : 500 }
     );
   }
 }

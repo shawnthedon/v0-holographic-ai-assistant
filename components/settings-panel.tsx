@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { X, Upload } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GatewayConfig } from './gateway-config';
+import type { CatalogueModel } from '@/hooks/use-model-catalogue';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -20,6 +21,9 @@ interface SettingsPanelProps {
   onCustomEndpointChange?: (endpoint: string) => void;
   onVoicePromptChange?: (voiceBlob: Blob | null) => void;
   onRolePromptChange?: (roleText: string) => void;
+  /** catalogue from GET /api/models — every model this deployment can address */
+  models?: CatalogueModel[];
+  onOpenModelCatalogue?: () => void;
 }
 
 interface UploadedFile {
@@ -42,9 +46,11 @@ export function SettingsPanel({
   onCustomEndpointChange,
   onVoicePromptChange,
   onRolePromptChange,
+  models = [],
+  onOpenModelCatalogue,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<'general' | 'gateway' | 'agents' | 'skills' | 'knowledge'>('general');
-  const [llmModel, setLlmModel] = useState(externalLlmModel || 'gemini-2.0-flash');
+  const [llmModel, setLlmModel] = useState(externalLlmModel || '');
   const [voiceProvider, setVoiceProvider] = useState(externalVoiceProvider || 'google');
   const [speechSpeed, setSpeechSpeed] = useState(externalSpeechSpeed || 1);
   const [customEndpoint, setCustomEndpoint] = useState(externalCustomEndpoint || '');
@@ -243,30 +249,50 @@ export function SettingsPanel({
                 <label className="block text-sm font-mono text-cyan-400 mb-3">
                   LLM Model
                 </label>
-                <div className="space-y-2">
-                  {[
-                    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-                    { value: 'gpt-4o', label: 'GPT-4o' },
-                    { value: 'custom', label: 'Custom OpenAI-Compatible' },
-                  ].map((option) => (
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {(models.length
+                    ? models
+                    : [
+                        { id: 'custom/endpoint', label: 'Custom OpenAI-Compatible', configured: true, provider: 'custom' },
+                      ] as unknown as CatalogueModel[]
+                  ).map((option) => (
                     <label
-                      key={option.value}
+                      key={option.id}
                       className="flex items-center gap-3 p-3 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400/50 cursor-pointer transition-colors"
                     >
                       <input
                         type="radio"
                         name="llm"
-                        value={option.value}
-                        checked={llmModel === option.value}
+                        value={option.id}
+                        checked={llmModel === option.id}
                         onChange={(e) => handleLlmModelChange(e.target.value)}
                         className="w-4 h-4 accent-cyan-400"
                       />
-                      <span className="text-sm text-gray-300">{option.label}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm text-gray-300">{option.label}</span>
+                        <span className="block font-mono text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                          {option.provider} · {option.execution ?? 'cloud'} ·{' '}
+                          {option.configured ? 'ready' : 'no key'}
+                        </span>
+                      </span>
                     </label>
                   ))}
                 </div>
 
-                {llmModel === 'custom' && (
+                {onOpenModelCatalogue && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenModelCatalogue();
+                    }}
+                    className="mt-3 w-full rounded border border-cyan-400/40 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.24em] text-cyan-300 transition hover:bg-cyan-400/10"
+                  >
+                    open model catalogue
+                  </button>
+                )}
+
+                {llmModel.startsWith('custom/') && (
                   <motion.div
                     className="mt-3 p-3 rounded-lg bg-slate-900 border border-slate-700"
                     initial={{ opacity: 0, y: -10 }}

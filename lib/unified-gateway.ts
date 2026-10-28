@@ -9,7 +9,7 @@ import axios, { AxiosInstance } from 'axios';
 export type GatewayProvider = 
   | 'openrouter'
   | 'huggingface'
-  | 'litelm'
+  | 'litellm'
   | 'bedrock'
   | 'ollama'
   | 'custom'
@@ -81,8 +81,8 @@ const PROVIDER_DEFAULTS: Record<GatewayProvider, { baseUrl: string; headers?: Re
   huggingface: {
     baseUrl: 'https://api-inference.huggingface.co/v1',
   },
-  litelm: {
-    baseUrl: 'http://0.0.0.0:4000',
+  litellm: {
+    baseUrl: 'http://127.0.0.1:4000/v1',
   },
   bedrock: {
     baseUrl: 'https://bedrock-runtime.us-east-1.amazonaws.com',
@@ -152,7 +152,7 @@ export class UnifiedGatewayService {
         headers['Authorization'] = `Bearer ${this.config.apiKey}`;
         break;
 
-      case 'litelm':
+      case 'litellm':
         headers['Authorization'] = `Bearer ${this.config.apiKey}`;
         break;
 
@@ -238,22 +238,45 @@ export class UnifiedGatewayService {
   /**
    * Test the gateway connection
    */
-  async testConnection(): Promise<{ success: boolean; model: string; error?: string }> {
+  async testConnection(): Promise<{ success: boolean; model: string; error?: string; fix?: string }> {
+    // Delegate to the shared adapter layer so a "test" exercises the same
+    // request shape production uses. The old implementation posted an
+    // OpenAI-compatible body at every provider, which reported false
+    // successes for Anthropic/Bedrock/Cohere.
     try {
-      const response = await this.chat({
-        messages: [{ role: 'user', content: 'Say "OK"' }],
-        maxTokens: 10,
+      const { chat } = await import('./llm/service');
+      const { PROVIDERS } = await import('./llm/providers');
+      const providerId = this.config.provider === ('litelm' as string) ? 'litellm' : this.config.provider;
+      const provider = PROVIDERS[providerId as keyof typeof PROVIDERS];
+
+      if (!provider) {
+        return {
+          success: false,
+          model: this.config.model,
+          error: `Unknown provider "${this.config.provider}"`,
+          fix: 'Use one of the providers listed by GET /api/models.',
+        };
+      }
+
+      const result = await chat({
+        modelId: `${providerId}/${this.config.model}`,
+        credential: { apiKey: this.config.apiKey, baseUrl: this.config.baseUrl },
+        messages: [
+          { role: 'system', content: 'You are a connectivity probe. Reply with the single word OK.' },
+          { role: 'user', content: 'ping' },
+        ],
+        maxTokens: 8,
+        temperature: 0,
       });
 
-      return {
-        success: true,
-        model: response.model,
-      };
+      return { success: true, model: result.model };
     } catch (error) {
+      const fix = (error as { fix?: string }).fix;
       return {
         success: false,
         model: this.config.model,
         error: error instanceof Error ? error.message : 'Unknown error',
+        fix,
       };
     }
   }

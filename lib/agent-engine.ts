@@ -47,7 +47,7 @@ class AgentEngine {
   private context: AgentExecutionContext;
   private messageHistory: AgentMessage[] = [];
   private stateTransitionCallbacks: Map<AgentState, Function[]> = new Map();
-  private healthCheckInterval: NodeJS.Timeout | null = null;
+  private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
   private lastHeartbeat: number = Date.now();
 
   constructor(config: AgentConfig) {
