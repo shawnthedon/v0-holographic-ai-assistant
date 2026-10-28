@@ -64,13 +64,13 @@ Two non-negotiable rules:
 | Scan header | `hud/chrome.tsx` | mode label blur-in, progress segments stagger, `Metric` counters |
 | Hologram rig | `hud/hologram-stage.tsx` | 4 counter-rotating orbit loops, scan sweep `alternate`, beam strands stagger, spark field, `createTimer` parallax rig |
 | Deep scan | `hud/hologram-stage.tsx` | click → burst ring scale/opacity + 24 radial ticks staggered from centre |
-| Speaking | `hud/hologram-stage.tsx` | interval-driven chromatic `steps(3)` glitch on subject slices |
-| Waveform | `instruments/waveform.tsx` | `createTimer` single RAF loop; amplitude eased by `animate` |
-| Spectrum bars | `instruments/bar-matrix.tsx` | `stagger` from `center`, `alternate` loop, `scaleY` only |
-| Sparklines | `instruments/sparkline.tsx` | `svg.createDrawable` stroke reveal + pulsing head marker |
-| Radial gauge | `instruments/arc-gauge.tsx` | `strokeDashoffset` sweep + numeric counter in one pass |
-| Radar cluster | `instruments/ring-cluster.tsx` | orbit loops, randomised blips, `stagger(from:'random')` |
-| Neural log | `hud/neural-log.tsx` | interval rows, each entering with `translateX` + `scale` |
+| Speaking | `hud/hologram-stage.tsx` | interval-driven chromatic `steps(4)` glitch on the projection |
+| Waveform | `instruments/live-waveform.tsx` | single RAF canvas loop reading the live analyser; no React state |
+| Spectrum bars | `instruments/spectrum-bars.tsx` | RAF canvas loop over the live FFT with decaying peak-hold |
+| Sparklines | `instruments/live-chart.tsx` | RAF canvas loop over a telemetry history series |
+| Radial gauge | `instruments/arc-gauge.tsx` | `strokeDashoffset` eased from the shown value + numeric counter |
+| Radar cluster | `instruments/ring-cluster.tsx` | orbit loops, `stagger(from:'random')`, `stretch()` on state change |
+| Insight log | `hud/insight-log.tsx` | newest row enters with `translateX` + `opacity` |
 | Command dock | `hud/dock.tsx` | magnetic hover (`outExpo`), spring release, click ripple ring |
 | Transcript | `hud/console-panel.tsx` | panel slide/scale/blur, message entry |
 | Backdrop | `hud/backdrop.tsx` | vertical grid drift, bloom breathing |

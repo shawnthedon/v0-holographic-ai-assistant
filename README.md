@@ -23,10 +23,10 @@ the scan sweep hotter, switches the accent from cyan to lime and drives every
 meter/oscilloscope. Clicking the subject fires a deep scan burst.
 
 **Motion** — every animation is [anime.js v4](https://animejs.com) driven:
-`createTimeline` for the cold-boot sequence, `stagger` for entrances, SVG
-drawables for the sparklines, motion-free single-timer RAF loops for the
-oscilloscopes, and `animation.stretch()` to retime live orbits without losing
-their phase. Full breakdown: [`docs/ANIME_MOTION.md`](docs/ANIME_MOTION.md).
+`createTimeline` for the cold-boot sequence, `stagger` for entrances, and
+`animation.stretch()` to retime live orbits without losing their phase. Canvas
+instruments run their own single RAF loop and read the telemetry store
+directly, so 5 Hz data never re-renders the page. Full breakdown: [`docs/ANIME_MOTION.md`](docs/ANIME_MOTION.md).
 
 `prefers-reduced-motion` is honoured everywhere — instruments snap to their
 final state and nothing loops.
