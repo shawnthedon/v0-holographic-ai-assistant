@@ -96,7 +96,6 @@ export function SpectrumBars({
     };
 
     if (reduced) {
-      telemetry.spectrumLive = false;
       draw();
       cancelAnimationFrame(raf);
       return () => observer.disconnect();
