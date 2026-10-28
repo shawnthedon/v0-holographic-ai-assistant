@@ -38,9 +38,20 @@ Any changes you make to your deployed app will be automatically pushed to this r
 
 ## Deployment
 
-Your project is live at:
+Live console: **https://v0-holographic-ai-assistant-two.vercel.app**
 
-**[https://vercel.com/johnny-bads-projects/v0-holographic-ai-assistant](https://vercel.com/johnny-bads-projects/v0-holographic-ai-assistant)**
+Vercel project: [v0-holographic-ai-assistant](https://vercel.com/shawnthedon2013-gmailcoms-projects/v0-holographic-ai-assistant)
+(team `shawnthedon2013-gmailcoms-projects`, Next.js preset, region `iad1`).
+
+Runtime env (both optional — the console runs standalone without them):
+
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_BACKEND_URL` | WebSocket endpoint for full-duplex audio streaming |
+| Gateway/provider keys | used by the `/api/*` routes for chat, speech and voice cloning |
+
+Deploy from the repo root with `vercel` or by connecting the GitHub repo; the
+project builds with the default `next build` command and no custom output dir.
 
 ## Build your app
 
