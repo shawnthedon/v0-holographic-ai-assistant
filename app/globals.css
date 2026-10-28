@@ -75,8 +75,8 @@
 }
 
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback';
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --font-sans: 'Rajdhani', 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -121,5 +121,255 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+
+/* ==================================================================
+   HOLOGRAPHIC HUD
+   Tokens + primitives live outside layers; every visual material sits
+   in `components` so Tailwind utilities (position, spacing, colour)
+   always win when a component needs to override a material.
+   ================================================================== */
+
+:root,
+.dark {
+  --hud-ink: #8ff6ff;
+  --hud-ink-dim: rgba(150, 238, 255, 0.55);
+  --hud-line: rgba(125, 242, 255, 0.18);
+  --hud-line-strong: rgba(125, 242, 255, 0.42);
+  --hud-lime: #b6ff3b;
+  --hud-mint: #2ef2c0;
+  --hud-void: #01070a;
+
+  /* motion language — one set of curves for the whole console */
+  --ease-out-fast: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-out-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+html,
+body {
+  height: 100%;
+  /* `clip` (not `hidden`) — it also blocks programmatic scrolling, so
+     focusing an input inside an overlay can never shift the console */
+  overflow: clip;
+  overscroll-behavior: none;
+  background: #000;
+}
+
+/* the console owns the viewport — nothing outside it may scroll */
+body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@keyframes hud-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+
+@keyframes hud-blink {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes hud-eq {
+  from {
+    transform: scaleY(0.4);
+  }
+  to {
+    transform: scaleY(1.15);
+  }
+}
+
+@layer components {
+  .hud-root {
+    color: var(--hud-ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------------- materials ---------------- */
+
+  .hud-panel {
+    background: linear-gradient(180deg, rgba(6, 30, 38, 0.72) 0%, rgba(2, 10, 13, 0.58) 100%);
+    border: 1px solid var(--hud-line);
+    backdrop-filter: blur(10px);
+    box-shadow:
+      inset 0 1px 0 rgba(140, 245, 255, 0.06),
+      0 0 34px rgba(0, 180, 220, 0.05);
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  }
+
+  .hud-bracket {
+    opacity: 0.55;
+    filter: drop-shadow(0 0 3px rgba(125, 242, 255, 0.4));
+  }
+
+  .hud-hit {
+    transition:
+      transform 120ms var(--ease-out-fast),
+      color 150ms ease;
+  }
+
+  .hud-hit:active {
+    transform: scale(0.92);
+  }
+
+  .hud-dot {
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--hud-ink);
+    box-shadow: 0 0 8px currentColor;
+    color: var(--hud-ink);
+    opacity: 0.6;
+  }
+
+  .hud-dot[data-state='live'] {
+    background: var(--hud-lime);
+    color: var(--hud-lime);
+    opacity: 1;
+    animation: hud-pulse 1400ms ease-in-out infinite;
+  }
+
+  .hud-chip {
+    background: rgba(2, 10, 13, 0.72);
+    border: 1px solid rgba(125, 242, 255, 0.16);
+    padding: 3px 6px;
+    backdrop-filter: blur(2px);
+    box-shadow: 0 0 18px rgba(0, 160, 200, 0.12);
+  }
+
+  .hud-sheet {
+    background: linear-gradient(180deg, rgba(4, 20, 26, 0.97) 0%, rgba(1, 7, 10, 0.99) 100%);
+    box-shadow: -40px 0 90px rgba(0, 0, 0, 0.65);
+  }
+
+  .hud-sheet::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      rgba(140, 245, 255, 0.05) 0px,
+      rgba(140, 245, 255, 0.05) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    opacity: 0.5;
+  }
+
+  /* ---------------- holographic textures ---------------- */
+
+  .holo-grid {
+    background-image:
+      linear-gradient(to right, rgba(130, 245, 255, 0.16) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(130, 245, 255, 0.16) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mix-blend-mode: screen;
+    mask-image: radial-gradient(circle at 50% 46%, #000 42%, rgba(0, 0, 0, 0.35) 74%, transparent 92%);
+    -webkit-mask-image: radial-gradient(circle at 50% 46%, #000 42%, rgba(0, 0, 0, 0.35) 74%, transparent 92%);
+  }
+
+  .holo-scanlines {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      rgba(140, 245, 255, 0.07) 0px,
+      rgba(140, 245, 255, 0.07) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    mix-blend-mode: screen;
+  }
+
+  .holo-dither {
+    background-image: radial-gradient(rgba(160, 250, 255, 0.5) 0.5px, transparent 0.6px);
+    background-size: 3px 3px;
+    mix-blend-mode: screen;
+    opacity: 0.18;
+  }
+
+  .holo-subject {
+    filter: grayscale(1) contrast(1.34) brightness(1.12) sepia(0.4) hue-rotate(150deg) saturate(2.4);
+    mix-blend-mode: screen;
+    mask-image: radial-gradient(circle at 50% 44%, #000 54%, rgba(0, 0, 0, 0.55) 78%, transparent 96%);
+    -webkit-mask-image: radial-gradient(circle at 50% 44%, #000 54%, rgba(0, 0, 0, 0.55) 78%, transparent 96%);
+  }
+
+  .holo-scan {
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(180, 255, 70, 0.03) 26%,
+      rgba(200, 255, 120, 0.32) 46%,
+      rgba(235, 255, 200, 0.92) 50%,
+      rgba(200, 255, 120, 0.32) 54%,
+      rgba(180, 255, 70, 0.03) 76%,
+      transparent 100%
+    );
+    mix-blend-mode: screen;
+    filter: blur(0.4px);
+  }
+
+  /* ---------------- instrumentation ---------------- */
+
+  .hud-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(125, 242, 255, 0.3) transparent;
+  }
+
+  .hud-scroll::-webkit-scrollbar {
+    width: 3px;
+  }
+
+  .hud-scroll::-webkit-scrollbar-thumb {
+    background: rgba(125, 242, 255, 0.3);
+  }
+
+  /* the transcript floats clear of the command dock */
+  .hud-console {
+    bottom: 108px;
+  }
+
+  @media (min-width: 768px) {
+    .hud-console {
+      bottom: 12px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .holo-scan {
+    opacity: 0.5;
   }
 }
