@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { telemetry } from '@/lib/hud/telemetry';
 
 interface AudioConfig {
   sampleRate?: number;
@@ -30,6 +31,7 @@ export function useFullDuplexAudio(
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
 
   // Initialize audio context and start streaming
   const startStreaming = useCallback(async () => {
@@ -61,6 +63,16 @@ export function useFullDuplexAudio(
       // Create media stream source
       if (!sourceRef.current) {
         sourceRef.current = audioContext.createMediaStreamSource(stream);
+      }
+
+      // Real analyser feeding the HUD level meters, spectrum and lip-sync
+      if (!analyserRef.current) {
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 1024;
+        analyser.smoothingTimeConstant = 0.72;
+        sourceRef.current.connect(analyser);
+        analyserRef.current = analyser;
+        telemetry.attachAnalyser(analyser, audioContext.sampleRate);
       }
 
       // Create script processor for continuous audio capture
@@ -101,6 +113,13 @@ export function useFullDuplexAudio(
 
   // Stop streaming
   const stopStreaming = useCallback(() => {
+    telemetry.attachAnalyser(null);
+
+    if (analyserRef.current) {
+      analyserRef.current.disconnect();
+      analyserRef.current = null;
+    }
+
     if (sourceRef.current) {
       sourceRef.current.disconnect();
     }

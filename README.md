@@ -31,6 +31,41 @@ their phase. Full breakdown: [`docs/ANIME_MOTION.md`](docs/ANIME_MOTION.md).
 `prefers-reduced-motion` is honoured everywhere — instruments snap to their
 final state and nothing loops.
 
+## Live instrumentation
+
+Every readout on the console is measured, not invented. `lib/hud/telemetry.ts`
+is a single external store that samples the running application and publishes at
+5 Hz; components subscribe to one metric each through `useMetric()` so a value
+change never re-renders the page.
+
+| Readout | Source |
+| --- | --- |
+| render engine (fps, frame, worst frame, jank) | `requestAnimationFrame` timing + `PerformanceObserver` long tasks |
+| runtime (heap, limit, DOM nodes) | `performance.memory`, `document.querySelectorAll('*')` |
+| api uplink (latency, rtt, downlink, failures) | real `fetch('/api/health')` probe every 9s + `navigator.connection` |
+| input channel (level, peak, dB, sample rate) | `AnalyserNode` on the real microphone stream |
+| spectrum bars | `getByteFrequencyData` from that same analyser (falls back to frame-time history when the mic is closed) |
+| microphone trace | live `getByteTimeDomainData` oscilloscope |
+| insight log | health transitions, long tasks, channel open/close, duplex socket, operator actions |
+| session counters | eased odometers over inputs / messages / scans / agents |
+
+## The avatar
+
+`lib/hud/avatar-face.ts` drives a three.js face rig rendered into the projector
+lens: a procedurally sculpted skull (13 gaussian bumps for brow ridge, sockets,
+nose, cheekbones, philtrum, chin, temples), eyeballs with iris/pupil/glare,
+swinging lid shells, tube brows and a torus mouth. Facial features are placed by
+raycasting onto the finished skull, so they always sit on the surface.
+
+Behaviour is spring-damped and state driven — saccades with overshoot, blink
+state machine (double blinks, saccade coupling, suppressed while thinking),
+vestibulo-ocular lead, pupil dilation from cognitive load, breathing, and a jaw
+driven by the live microphone envelope so the lips move with speech. Assistant
+state maps straight through: `idle → listening → thinking → speaking`.
+
+WebGL unavailable, a lost context, or a throwing render loop degrades to the
+still portrait, so the stage never blanks.
+
 ## Overview
 
 This repository will stay in sync with your deployed chats on [v0.app](https://v0.app).

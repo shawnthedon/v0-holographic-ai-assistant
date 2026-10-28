@@ -32,6 +32,7 @@ export function ArcGauge({
   const circumference = 2 * Math.PI * radius;
   const arcRef = useRef<SVGCircleElement>(null);
   const valueRef = useRef<HTMLSpanElement>(null);
+  const shownValue = useRef(0);
   const reduced = useReducedMotion();
 
   useEffect(() => {
@@ -42,30 +43,35 @@ export function ArcGauge({
 
     if (reduced) {
       utils.set(arc, { strokeDashoffset: target });
+      shownValue.current = value;
       if (valueRef.current) valueRef.current.textContent = `${Math.round(value)}`;
       return;
     }
 
+    // single target → anime.js eases from the *current* offset, so a live
+    // gauge never snaps back to zero between updates
     animate(arc, {
-      strokeDashoffset: [circumference, target],
-      duration: 1600,
+      strokeDashoffset: target,
+      duration: 900,
       ease: EASE.glide,
     });
 
     if (valueRef.current) {
+      const from = shownValue.current;
       animate(
-        { v: 0 },
+        { v: from },
         {
           v: value,
-          duration: 1500,
+          duration: 900,
           ease: EASE.glide,
           onUpdate: (self) => {
             const progress = (self as unknown as { progress: number }).progress ?? 0;
             if (valueRef.current) {
-              valueRef.current.textContent = `${Math.round(value * progress)}`;
+              valueRef.current.textContent = `${Math.round(from + (value - from) * progress)}`;
             }
           },
           onComplete: () => {
+            shownValue.current = value;
             if (valueRef.current) valueRef.current.textContent = `${Math.round(value)}`;
           },
         },

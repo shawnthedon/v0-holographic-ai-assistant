@@ -1,13 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Image from 'next/image';
 import { animate, createTimer, stagger, type JSAnimation } from 'animejs';
+import { AvatarRig } from '@/components/hud/avatar-rig';
+import type { AvatarMode } from '@/lib/hud/avatar-face';
 import { EASE, useReducedMotion } from '@/lib/hud/motion';
 
 interface HologramStageProps {
   active?: boolean;
   speaking?: boolean;
+  mode?: AvatarMode;
   subject?: string;
   subjectId?: string;
   scanIndex?: number;
@@ -31,7 +33,7 @@ const SPARKS = Array.from({ length: 20 }).map((_, index) => {
 export function HologramStage({
   active = false,
   speaking = false,
-  subject = '/hologram/subject.jpg',
+  mode = 'idle',
   subjectId = '01001',
   scanIndex = 1,
   onScan,
@@ -206,9 +208,7 @@ export function HologramStage({
     }
     if (subjectRef.current) {
       animate(subjectRef.current, {
-        filter: active
-          ? 'saturate(1.12) contrast(1.16) brightness(1.05)'
-          : 'saturate(1) contrast(1.08) brightness(1)',
+        scale: active ? 1.035 : 1.02,
         duration: 700,
         ease: EASE.out,
       });
@@ -219,14 +219,20 @@ export function HologramStage({
     if (!speaking || !scope.current || reduced) return;
     const root = scope.current;
     const glitch = () => {
-      const slices = root.querySelectorAll<HTMLElement>('.holo-slice');
-      animate(slices, {
-        translateX: [0, (_el: unknown, index = 0) => (index % 2 === 0 ? 9 : -7), 0],
-        opacity: [0, 0.5, 0],
-        duration: 460,
-        delay: stagger(50),
-        ease: 'steps(3)',
-      });
+      // brief chromatic displacement of the projection while it speaks
+      if (subjectRef.current) {
+        animate(subjectRef.current, {
+          translateX: [0, 3, -2, 0],
+          filter: [
+            'hue-rotate(0deg) saturate(1)',
+            'hue-rotate(18deg) saturate(1.5)',
+            'hue-rotate(-12deg) saturate(1.2)',
+            'hue-rotate(0deg) saturate(1)',
+          ],
+          duration: 420,
+          ease: 'steps(4)',
+        });
+      }
       if (scanRef.current) {
         animate(scanRef.current, { opacity: [1, 0.4, 1], duration: 300, ease: 'steps(2)' });
       }
@@ -342,67 +348,43 @@ export function HologramStage({
               </svg>
             </div>
 
-            {/* subject */}
+            {/* subject — live WebGL face rig */}
             <div className="absolute inset-[10%] overflow-hidden rounded-full bg-[#020a0d]">
               <div
                 ref={subjectRef}
                 className="absolute inset-0"
                 style={{
-                  transform: 'translate3d(var(--px, 0px), var(--py, 0px), 0) scale(1.04)',
+                  transform: 'translate3d(var(--px, 0px), var(--py, 0px), 0) scale(1.02)',
                   willChange: 'transform',
                 }}
               >
-                <Image
-                  src={subject}
-                  alt="Holographic subject projection"
-                  fill
-                  priority
-                  sizes="(max-width: 768px) 80vw, 520px"
-                  className="holo-subject object-cover"
-                />
+                <AvatarRig mode={mode} className="absolute inset-0" />
               </div>
               <div
                 className="pointer-events-none absolute inset-0"
                 style={{
                   background:
-                    'radial-gradient(circle at 50% 40%, rgba(120,255,255,0.12) 0%, rgba(3,20,26,0.3) 60%, #02080a 92%)',
+                    'radial-gradient(circle at 50% 42%, rgba(120,255,255,0.08) 0%, rgba(3,20,26,0.28) 62%, #02080a 94%)',
                   mixBlendMode: 'screen',
                 }}
               />
-              <div className="holo-grid pointer-events-none absolute inset-0" />
-              <div className="holo-scanlines pointer-events-none absolute inset-0 opacity-70" />
-              <div className="holo-dither pointer-events-none absolute inset-0" />
+              <div className="holo-grid pointer-events-none absolute inset-0 opacity-40" />
+              <div className="holo-scanlines pointer-events-none absolute inset-0 opacity-40" />
+              <div className="holo-dither pointer-events-none absolute inset-0 opacity-60" />
               <div
                 className="pointer-events-none absolute inset-0 rounded-full"
                 style={{
                   boxShadow:
-                    'inset 0 0 0 1px rgba(150,246,255,0.32), inset 0 0 46px 8px rgba(46,242,192,0.16)',
+                    'inset 0 0 0 1px rgba(150,246,255,0.32), inset 0 0 46px 8px rgba(46,242,192,0.14)',
                 }}
               />
               <div
                 className="pointer-events-none absolute inset-0"
                 style={{
                   boxShadow:
-                    'inset 0 0 60px 18px rgba(2,8,10,0.9), inset 0 0 120px 40px rgba(2,8,10,0.6)',
+                    'inset 0 0 70px 22px rgba(2,8,10,0.92), inset 0 0 140px 46px rgba(2,8,10,0.55)',
                 }}
               />
-              {[20, 48, 72].map((top, index) => (
-                <div
-                  key={top}
-                  className="holo-slice pointer-events-none absolute inset-0 opacity-0"
-                  style={{
-                    backgroundImage: `url(${subject})`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    clipPath: `inset(${top}% 0% ${Math.max(0, 100 - top - 8)}% 0%)`,
-                    mixBlendMode: 'screen',
-                    filter:
-                      index % 2 === 0
-                        ? 'hue-rotate(160deg) saturate(2.2) contrast(1.2)'
-                        : 'hue-rotate(70deg) saturate(2.2) contrast(1.2)',
-                  }}
-                />
-              ))}
             </div>
 
             {/* scan sweep */}

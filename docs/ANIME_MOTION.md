@@ -88,3 +88,35 @@ Two non-negotiable rules:
   animated; no layout properties.
 - Loops are paused in effect cleanup, and `stretch()` (never a restart) is used
   to change loop speed at runtime.
+
+
+---
+
+## 9. Live data × motion
+
+Instruments no longer animate canned demo numbers. `lib/hud/telemetry.ts`
+publishes a measured snapshot at 5 Hz; HUD components subscribe with
+`useMetric(key)` (`hooks/use-hud-telemetry.ts`, backed by
+`useSyncExternalStore`) and animate *from the value they are already showing*,
+never from zero:
+
+```ts
+animate(arc, { strokeDashoffset: target, duration: 900, ease: EASE.glide });
+```
+
+Drawing surfaces that need per-frame data (sparklines, spectrum, oscilloscope)
+run a single `requestAnimationFrame` loop of their own and read the store
+directly — no React state, no re-render, and the loop is skipped entirely under
+`prefers-reduced-motion` (one static draw instead).
+
+Rules that keep it coherent:
+
+1. **One owner per property.** anime.js owns transforms/opacity on HUD chrome;
+   canvas code owns canvas pixels; three.js owns the avatar. Nothing
+   cross-writes another system's properties.
+2. **Retime, never restart.** Live loops use `animation.stretch(factor)` so a
+   state change reads as acceleration instead of a phase jump.
+3. **Motion encodes data.** Sweep speed follows the microphone envelope, ring
+   rotations follow listening state, counters ease toward the measured value.
+4. **Fallbacks are static.** Reduced motion, no WebGL, or a lost context falls
+   back to a still frame rather than a half-animated one.
