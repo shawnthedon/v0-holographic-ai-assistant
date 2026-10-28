@@ -35,10 +35,12 @@ node scripts/verify-llm.mjs --base http://127.0.0.1:3000 --probe --md evidence.m
   reach, straight from the provider's `/models`.
 
 Each entry carries `roles`, `execution` (`cloud` / `self-hosted` / `on-device`),
-`licence`, `notes`, and `configured` (does this deployment hold a credential).
-The picker (Dock → Models, or Settings → Models) filters by role, shows which
-providers are keyed, and marks blocked models instead of letting them fail at
-send time.
+`licence`, `notes`, `configured` (does this deployment hold a credential) and
+`verified` (has it answered a real request). The picker (Dock → Models) filters
+by role, shows which providers are keyed, and labels a model without a key
+`no key` while keeping it selectable — choosing it returns `503` naming the
+exact variable to set, which the console now shows in an error banner instead
+of swallowing.
 
 Selection is a model **id** sent per request (`POST /api/chat { model }`) and
 resolved server-side; the browser never holds a key.
