@@ -23,6 +23,7 @@ export function useTelemetryStore() {
 /** Formatted uptime, ticking off a metric that already updates 5×/s. */
 export function useUptime() {
   const seconds = useMetric('uptimeSec');
+  if (seconds <= 0) return '--:--';
   const mm = Math.floor(seconds / 60);
   const ss = seconds % 60;
   return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
@@ -40,7 +41,8 @@ export function useLiveTitle() {
   useEffect(() => {
     const id = window.setInterval(() => {
       const fps = telemetry.get('fps');
-      document.title = `NEXUS · ${fps.toFixed(0)} fps`;
+      // a backgrounded tab stops painting, so 0 fps means "not sampling"
+      document.title = fps > 0 ? `NEXUS · ${fps.toFixed(0)} fps` : 'NEXUS · holographic console';
     }, 4000);
     return () => window.clearInterval(id);
   }, []);

@@ -121,6 +121,7 @@ class HudTelemetry {
   private lastTickAt = 0;
   private lastPingAt = 0;
   private lastDomSampleAt = 0;
+  private heartbeat = 0;
   private startedAt = typeof performance !== 'undefined' ? performance.now() : 0;
   private analyser: AnalyserNode | null = null;
   private timeDomain: Uint8Array<ArrayBuffer> | null = null;
@@ -224,11 +225,52 @@ class HudTelemetry {
       this.tick(now);
     };
     this.raf = requestAnimationFrame(loop);
+
+    // A backgrounded tab stops painting, so RAF stalls. This heartbeat keeps
+    // uptime, heap, DOM size and the health probe honest while it does, and
+    // reports a true 0 fps instead of a stale reading.
+    this.heartbeat = window.setInterval(() => this.beat(), 1000);
+  }
+
+  private beat() {
+    const now = performance.now();
+    if (now - this.lastFrameAt > 1500 && this.metrics.fps !== 0) {
+      this.set('fps', 0);
+      this.set('frameMs', 0);
+      this.push('fps', 0);
+      this.notify();
+    }
+
+    this.set('uptimeSec', Math.round((now - this.startedAt) / 1000));
+
+    const memory = (performance as Performance & {
+      memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number };
+    }).memory;
+    if (memory) {
+      const used = memory.usedJSHeapSize / 1048576;
+      const limit = memory.jsHeapSizeLimit / 1048576;
+      this.set('heapMB', Number(used.toFixed(1)));
+      this.set('heapLimitMB', Math.round(limit));
+      this.set('heapPct', Number(((used / limit) * 100).toFixed(1)));
+      this.push('heap', this.metrics.heapMB);
+    }
+
+    if (now - this.lastDomSampleAt > 900) {
+      this.lastDomSampleAt = now;
+      this.set('domNodes', document.getElementsByTagName('*').length);
+    }
+
+    if (now - this.lastPingAt > 9000) {
+      this.lastPingAt = now;
+      this.pingHealth();
+    }
   }
 
   private stop() {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
+    if (this.heartbeat) window.clearInterval(this.heartbeat);
+    this.heartbeat = 0;
     this.longTaskObserver?.disconnect();
     this.longTaskObserver = null;
     window.removeEventListener('online', this.onNetworkChange);
