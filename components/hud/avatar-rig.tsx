@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { createAvatarRig, type AvatarRigHandle, type AvatarMode } from '@/lib/hud/avatar-face';
 import { telemetry } from '@/lib/hud/telemetry';
 import { useReducedMotion } from '@/lib/hud/motion';
+import { usePower } from '@/hooks/use-power';
 
 interface AvatarRigProps {
   mode: AvatarMode;
@@ -23,6 +24,7 @@ export function AvatarRig({ mode, className = '', onReady }: AvatarRigProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const rigRef = useRef<AvatarRigHandle | null>(null);
   const reduced = useReducedMotion();
+  const power = usePower();
   const [status, setStatus] = useState<'pending' | 'live' | 'failed'>('pending');
 
   useEffect(() => {
@@ -78,6 +80,11 @@ export function AvatarRig({ mode, className = '', onReady }: AvatarRigProps) {
     rigRef.current?.setMode(mode);
     rigRef.current?.setHover(!reduced);
   }, [mode, reduced]);
+
+  // Battery decides the drawing-buffer resolution, not the feature set.
+  useEffect(() => {
+    rigRef.current?.setQuality(power.profile);
+  }, [power.profile]);
 
   return (
     /*

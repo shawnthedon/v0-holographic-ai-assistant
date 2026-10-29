@@ -4,6 +4,8 @@ import { useCallback, useRef, useState } from 'react';
 import { getWebSocketClient } from '@/lib/websocket-client';
 import * as deviceAi from '@/lib/device-ai/service';
 import { toPayload } from '@/lib/device-ai/types';
+import { captureFromAgent } from '@/lib/artifacts/service';
+import { telemetry } from '@/lib/hud/telemetry';
 
 /** Any model id from GET /api/models, e.g. 'openrouter/qwen-2.5-72b-instruct'. */
 export type LLMModel = string;
@@ -197,6 +199,26 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
     [options]
   );
 
+  /**
+   * Turn fenced files in a reply into artifacts — asynchronously, and never at
+   * the cost of the reply itself. A capture failure is logged, not thrown: the
+   * conversation is more important than the file.
+   */
+  const captureArtifacts = useCallback((text: string, agentName: string) => {
+    void captureFromAgent(text, { agentName })
+      .then((created) => {
+        if (created.length > 0) {
+          telemetry.logEvent(
+            `${created.length} artifact${created.length === 1 ? '' : 's'} captured`,
+            'good',
+          );
+        }
+      })
+      .catch((error) => {
+        console.warn('[artifacts] capture failed', error);
+      });
+  }, []);
+
   // Handle user message
   const handleUserMessage = useCallback(
     async (content: string) => {
@@ -248,6 +270,8 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
           setMessages((prev) =>
             appendMessage(prev, { role: 'assistant', content: text, timestamp: Date.now() }),
           );
+          // Files the model emitted become artifacts on device, immediately.
+          captureArtifacts(text, loaded);
           try {
             await wsClientRef.current.sendVisemeRequest(text);
           } catch {
@@ -308,6 +332,7 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
           timestamp: Date.now(),
         };
         setMessages((prev) => appendMessage(prev, assistantMessage));
+        captureArtifacts(assistantResponse, options.model);
 
         // Generate speech
         await synthesizeSpeech(assistantResponse);
@@ -329,7 +354,7 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
         setIsProcessing(false);
       }
     },
-    [options, messages, synthesizeSpeech]
+    [captureArtifacts, options, messages, synthesizeSpeech]
   );
 
   // Send text message directly

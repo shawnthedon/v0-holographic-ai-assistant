@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScanLine, TriangleAlert, X } from 'lucide-react';
 import { HudBackdrop } from '@/components/hud/backdrop';
@@ -23,10 +24,32 @@ import {
   SensorPanel,
   SessionPanel,
 } from '@/components/hud/readouts';
-import { SettingsPanel } from '@/components/settings-panel';
-import { ModelPicker } from '@/components/hud/model-picker';
 import { HudErrorBoundary } from '@/components/hud/error-boundary';
-import { LocalAiPanel } from '@/components/hud/local-ai-panel';
+import { StatusStrip } from '@/components/hud/status-strip';
+
+/*
+ * Overlays are split out of the initial bundle. None of them is visible until
+ * the operator opens it, and together they were the biggest chunk of client JS:
+ * the local-AI panel alone carries the runtime loader, the GGUF parser and the
+ * download manager. Loading them on demand keeps the console's first paint to
+ * the part you can actually see.
+ */
+const SettingsPanel = dynamic(
+  () => import('@/components/settings-panel').then((mod) => mod.SettingsPanel),
+  { ssr: false },
+);
+const ModelPicker = dynamic(
+  () => import('@/components/hud/model-picker').then((mod) => mod.ModelPicker),
+  { ssr: false },
+);
+const LocalAiPanel = dynamic(
+  () => import('@/components/hud/local-ai-panel').then((mod) => mod.LocalAiPanel),
+  { ssr: false },
+);
+const ArtifactPanel = dynamic(
+  () => import('@/components/hud/artifact-panel').then((mod) => mod.ArtifactPanel),
+  { ssr: false },
+);
 import { useDeviceAi } from '@/hooks/use-device-ai';
 import { FaceCapture } from '@/components/face-capture';
 import { useAiAssistant, type LLMModel, type VoiceProvider } from '@/hooks/use-ai-assistant';
@@ -49,6 +72,7 @@ export default function Home() {
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [localAiOpen, setLocalAiOpen] = useState(false);
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const device = useDeviceAi();
   const {
@@ -270,6 +294,12 @@ export default function Home() {
             </Reveal>
 
             <Reveal delay={220} className="flex-none">
+              <HudPanel title="system" meta="sync" className="flex-none" bodyClassName="px-2.5 py-2">
+                <StatusStrip />
+              </HudPanel>
+            </Reveal>
+
+            <Reveal delay={240} className="flex-none">
               <SensorPanel live={live} className="h-[118px]" />
             </Reveal>
 
@@ -425,8 +455,8 @@ export default function Home() {
           <span className="flex items-center gap-1.5">
             <ScanLine size={9} /> {status}
           </span>
+          <StatusStrip />
           <LiveMeta metric="fps" precision={0} suffix=" fps" />
-          <LiveClock />
         </div>
       </div>
 
@@ -466,12 +496,15 @@ export default function Home() {
         onDeepScan={deepScan}
         onModels={() => setPickerOpen(true)}
         onLocalAi={() => setLocalAiOpen(true)}
+        onArtifacts={() => setArtifactsOpen(true)}
         localLabel={device.loaded ? 'loaded' : `${device.models.length} installed`}
         modelLabel={
           selectedModel?.label ??
           device.models.find((model) => model.id === selectedModelId)?.name
         }
       />
+
+      <ArtifactPanel open={artifactsOpen} onClose={() => setArtifactsOpen(false)} />
 
       <LocalAiPanel
         open={localAiOpen}

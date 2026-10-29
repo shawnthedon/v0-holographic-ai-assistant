@@ -378,3 +378,27 @@ button {
     opacity: 0.5;
   }
 }
+
+/*
+ * Power profile (set by `lib/perf/governor.ts` from the Battery Status API).
+ *
+ * `saver` means: stop the decorative loops. It does not hide data or disable a
+ * control — every reading and every action stays available, they just stop
+ * costing a frame when nobody is looking at them for the tenth time.
+ */
+:root[data-power='saver'] .dock-eq,
+:root[data-power='saver'] .holo-orbit,
+:root[data-power='saver'] .holo-spark {
+  animation-play-state: paused !important;
+}
+
+:root[data-power='saver'] .hud-panel {
+  /* Paint containment stops a repaint inside one panel from invalidating the
+     whole canvas-sized layer underneath it. */
+  contain: layout style;
+}
+
+:root[data-power='balanced'] .hud-panel,
+:root[data-power='full'] .hud-panel {
+  contain: layout style;
+}

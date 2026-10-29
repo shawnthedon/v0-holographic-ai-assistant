@@ -5,6 +5,7 @@ import { animate, createTimer, stagger, type JSAnimation } from 'animejs';
 import { AvatarRig } from '@/components/hud/avatar-rig';
 import type { AvatarMode } from '@/lib/hud/avatar-face';
 import { EASE, useReducedMotion } from '@/lib/hud/motion';
+import { usePower } from '@/hooks/use-power';
 
 interface HologramStageProps {
   active?: boolean;
@@ -46,6 +47,7 @@ export function HologramStage({
   const beamRef = useRef<HTMLDivElement>(null);
   const pedestalRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
+  const power = usePower();
   const orbitLoops = useRef<{ animation: JSAnimation; base: number }[]>([]);
   const [pulse, setPulse] = useState(0);
 
@@ -177,7 +179,7 @@ export function HologramStage({
       loop: true,
       // 60 fps of DOM writes for a slow drifting parallax is wasted work on the
       // main thread and forces a style recalc of the whole projection subtree.
-      frameRate: 30,
+      frameRate: Math.max(12, Math.min(30, power.fpsCap)),
       onUpdate: () => {
         if (document.hidden) return;
         elapsed += 33;
@@ -211,7 +213,7 @@ export function HologramStage({
       root.removeEventListener('pointermove', onMove);
       root.removeEventListener('pointerleave', onLeave);
     };
-  }, [reduced]);
+  }, [power.fpsCap, reduced]);
 
   /* ---------------- state response ---------------- */
   useEffect(() => {

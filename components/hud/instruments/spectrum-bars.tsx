@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { telemetry } from '@/lib/hud/telemetry';
+import { getGovernor } from '@/lib/perf/governor';
 import { useReducedMotion } from '@/lib/hud/motion';
 
 interface SpectrumBarsProps {
@@ -61,7 +62,9 @@ export function SpectrumBars({
       raf = requestAnimationFrame(draw);
       // Telemetry publishes at 5 Hz. Repainting every frame redrew identical
       // pixels ~12x more often than the data changed.
-      if (now - lastDraw < 33) return;
+      // Battery-aware: the base cadence, or slower when the governor caps fps.
+      const minGap = Math.max(33, getGovernor().getFrameIntervalMs());
+      if (now - lastDraw < minGap) return;
       lastDraw = now;
       if (!width || !height) return;
       ctx.clearRect(0, 0, width, height);

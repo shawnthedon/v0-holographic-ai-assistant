@@ -11,6 +11,7 @@ import {
   ScanFace,
   Settings,
   HardDriveDownload,
+  FolderArchive,
 } from 'lucide-react';
 import { animate, type JSAnimation } from 'animejs';
 import { EASE, useReducedMotion } from '@/lib/hud/motion';
@@ -25,6 +26,8 @@ interface DockProps {
   onDeepScan: () => void;
   onModels?: () => void;
   onLocalAi?: () => void;
+  onArtifacts?: () => void;
+  artifactLabel?: string;
   localLabel?: string;
   modelLabel?: string;
   chatOpen?: boolean;
@@ -44,6 +47,8 @@ export function CommandDock({
   onDeepScan,
   onModels,
   onLocalAi,
+  onArtifacts,
+  artifactLabel,
   localLabel,
   modelLabel,
   chatOpen = false,
@@ -150,6 +155,9 @@ export function CommandDock({
               : []),
             ...(onLocalAi
               ? [{ icon: HardDriveDownload, label: localLabel ? `Local AI · ${localLabel}` : 'Local AI', action: onLocalAi, active: false }]
+              : []),
+            ...(onArtifacts
+              ? [{ icon: FolderArchive, label: artifactLabel ? `Artifacts · ${artifactLabel}` : 'Artifacts', action: onArtifacts, active: false }]
               : []),
             { icon: Camera, label: 'Biometric capture', action: onFaceToggle, active: false },
             { icon: MessageSquare, label: 'Transcript', action: onChatToggle, active: chatOpen },

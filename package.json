@@ -11,7 +11,10 @@
     "prebuild": "node scripts/sync-wllama-assets.mjs",
     "predev": "node scripts/sync-wllama-assets.mjs",
     "postinstall": "node scripts/sync-wllama-assets.mjs",
-    "test:device-ai": "node scripts/test-device-ai.mjs"
+    "test:device-ai": "node scripts/test-device-ai.mjs",
+    "test:artifacts": "node scripts/test-artifacts.mjs",
+    "test:ftp": "node scripts/test-ftp.mjs",
+    "test:offline": "node scripts/test-artifacts.mjs && node scripts/test-ftp.mjs"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "latest",
@@ -57,6 +60,7 @@
     "animejs": "^4.5.0",
     "autoprefixer": "^10.4.20",
     "axios": "^1.18.1",
+    "basic-ftp": "6.2.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
@@ -90,6 +94,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.182.0",
+    "ftp-srv": "4.6.3",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",

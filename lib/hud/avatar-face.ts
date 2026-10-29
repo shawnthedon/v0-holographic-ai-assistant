@@ -772,6 +772,17 @@ export function createAvatarRig({ canvas, onReady, onError }: AvatarRigOptions) 
     setHover(value: boolean) {
       state.hover = value;
     },
+    /**
+     * Power-aware rendering: drop the drawing buffer resolution before dropping
+     * frames. A 1.0x buffer on a 400px hologram still reads as sharp; a janky
+     * 60fps one does not.
+     */
+    setQuality(profile: 'full' | 'balanced' | 'saver') {
+      const ratio = profile === 'saver' ? 1 : profile === 'balanced' ? 1.25 : Math.min(window.devicePixelRatio || 1, 1.5);
+      const current = renderer.getPixelRatio();
+      if (Math.abs(current - ratio) < 0.01) return;
+      renderer.setPixelRatio(ratio);
+    },
     dispose() {
       cancelAnimationFrame(raf);
       observer.disconnect();
