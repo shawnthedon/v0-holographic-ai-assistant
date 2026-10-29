@@ -13,6 +13,7 @@ import {
   Settings,
   HardDriveDownload,
   FolderArchive,
+  FlaskConical,
 } from 'lucide-react';
 import { animate, type JSAnimation } from 'animejs';
 import { EASE, useReducedMotion } from '@/lib/hud/motion';
@@ -29,6 +30,8 @@ interface DockProps {
   onLocalAi?: () => void;
   onBrowser?: () => void;
   browserLabel?: string;
+  onStudio?: () => void;
+  studioLabel?: string;
   onArtifacts?: () => void;
   artifactLabel?: string;
   localLabel?: string;
@@ -53,6 +56,8 @@ export function CommandDock({
   onArtifacts,
   onBrowser,
   browserLabel,
+  onStudio,
+  studioLabel,
   artifactLabel,
   localLabel,
   modelLabel,
@@ -166,6 +171,9 @@ export function CommandDock({
               : []),
             ...(onBrowser
               ? [{ icon: Globe2, label: browserLabel ? `Browser · ${browserLabel}` : 'Browser', action: onBrowser, active: false }]
+              : []),
+            ...(onStudio
+              ? [{ icon: FlaskConical, label: studioLabel ? `Studio · ${studioLabel}` : 'Studio', action: onStudio, active: false }]
               : []),
             { icon: Camera, label: 'Biometric capture', action: onFaceToggle, active: false },
             { icon: MessageSquare, label: 'Transcript', action: onChatToggle, active: chatOpen },

@@ -377,6 +377,20 @@ button {
   .holo-scan {
     opacity: 0.5;
   }
+
+  /*
+   * The studio's holographic plate draws one still frame in this mode (see
+   * components/agent-studio/holo-backdrop.tsx), so the textures layered over it
+   * must stop too — otherwise the "still" background keeps scrolling.
+   */
+  .holo-scanlines,
+  .holo-grid,
+  .holo-dither,
+  .holo-scan {
+    animation: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
 }
 
 /*

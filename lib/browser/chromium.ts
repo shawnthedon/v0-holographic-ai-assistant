@@ -148,6 +148,29 @@ function requireFile(specifier: string): string {
   return require.resolve(specifier);
 }
 
+/**
+ * Cheap capability probe for other modules (the agent studio asks before it
+ * promises a browsing agent). Resolves the binary and its shared libraries but
+ * does not open a browser, so it is safe to call on a page request.
+ */
+export async function probeBrowserBinary(): Promise<{
+  available: boolean;
+  reason?: string;
+  note?: string;
+  executablePath?: string;
+}> {
+  const resolution = await resolveChromium();
+  if (!resolution.available) {
+    return { available: false, reason: resolution.reason };
+  }
+  const libraries = resolution.libraryPath ? ` (libraries: ${resolution.libraryPath})` : '';
+  return {
+    available: true,
+    executablePath: resolution.executablePath,
+    note: `Chromium binary resolved at ${resolution.executablePath}${libraries}.`,
+  };
+}
+
 export function chromiumLaunchArgs(extra: string[] = []): string[] {
   // A proxy is only used when the operator configured one — never to defeat a
   // regional or access restriction.

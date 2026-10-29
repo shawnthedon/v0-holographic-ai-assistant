@@ -396,6 +396,183 @@ await check('a spec without success criteria is refused with a fix', async () =>
   return body.fix;
 });
 
+/* ---------------------------- agent studio ------------------------------- */
+
+await check('the dock offers the agent studio', async () => {
+  await click('Close browser agent').catch(() => {});
+  await page.keyboard.press('Escape');
+  await wait(500);
+  await click('More controls');
+  await wait(400);
+  const entries = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('button')).map((b) => (b.innerText ?? '').trim().toLowerCase()),
+  );
+  assert(entries.some((entry) => entry.startsWith('studio')), 'studio entry missing from the dock');
+  await click('Studio');
+  await wait(4500);
+});
+
+await check('the studio opens with the holographic clip at 30%', async () => {
+  const clip = await page.evaluate(() => {
+    const canvas = document.querySelector('[data-holo]');
+    return canvas
+      ? {
+          mode: canvas.getAttribute('data-holo'),
+          opacity: canvas.getAttribute('data-holo-opacity'),
+          width: canvas.width,
+          height: canvas.height,
+        }
+      : null;
+  });
+  assert(clip, 'no holographic canvas');
+  assert(clip.mode === 'webgl', `clip fell back to ${clip.mode}`);
+  assert(clip.opacity === '0.3', `opacity is ${clip.opacity}`);
+  assert(clip.width > 200 && clip.height > 200, `canvas is ${clip.width}×${clip.height}`);
+  const text = await panelText('Agent designer studio');
+  assert(/AMBIENT PLATE/i.test(text), 'the clip is not labelled');
+});
+
+await check('the capability probe reports real availability', async () => {
+  const text = await panelText('Agent designer studio');
+  assert(/console task runner/i.test(text), 'catalogue missing');
+  assert(/ready/i.test(text), 'no ready capability reported');
+  assert(/needs setup/i.test(text), 'uninstalled runtimes are not marked needs-setup');
+  assert(/models/i.test(text), 'model count missing');
+});
+
+await check('a template fills the map and validation reacts', async () => {
+  const before = await page.evaluate(
+    () => document.querySelector('[aria-label="Agent designer studio"]')?.innerText ?? '',
+  );
+  const applied = await page.evaluate(() => {
+    const buttons = Array.from(document.querySelectorAll('button'));
+    const template = buttons.find((b) => (b.innerText ?? '').trim().toLowerCase() === 'research brief');
+    if (!template) return false;
+    template.click();
+    return true;
+  });
+  assert(applied, 'research template button missing');
+  await wait(1200);
+  const after = await page.evaluate(
+    () => document.querySelector('[aria-label="Agent designer studio"]')?.innerText ?? '',
+  );
+  assert(after !== before, 'the studio did not change when the template was applied');
+  assert(/browser agent/i.test(after), 'the template did not add the browser tool');
+  assert(/validation/i.test(after), 'no validation panel');
+});
+
+await check('activation is refused while the configuration is blocked', async () => {
+  const response = await page.evaluate(async () => {
+    const draft = {
+      id: 'draft-ui-test',
+      name: 'Blocked agent',
+      goal: 'nothing useful',
+      role: null,
+      selected: {},
+      granted: [],
+      acknowledged: [],
+      version: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    const result = await fetch('/api/agents/studio/agents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ draft }),
+    });
+    return { status: result.status, body: await result.json() };
+  });
+  assert(response.status === 409, `expected 409, got ${response.status}`);
+  assert(response.body.code === 'configuration-blocked', JSON.stringify(response.body).slice(0, 160));
+  assert(Array.isArray(response.body.blockers) && response.body.blockers.length >= 3, 'blockers not returned');
+  assert(typeof response.body.fix === 'string' && response.body.fix.length > 10, 'no fix text');
+  const disabled = await page.evaluate(() => {
+    const button = Array.from(document.querySelectorAll('[aria-label="Agent designer studio"] button')).find((b) =>
+      (b.innerText ?? '').trim().toLowerCase().startsWith('activate'),
+    );
+    return button ? button.disabled : null;
+  });
+  assert(disabled === true, 'the activate control should be disabled while blocked');
+  await page.screenshot({ path: path.join(outDir, 'studio.png') });
+});
+
+await check('reduced motion stills the clip and the textures', async () => {
+  const still = await browser.newPage();
+  await still.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+  await still.goto(base, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await wait(4500);
+  await still.evaluate(() =>
+    Array.from(document.querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === 'More controls')?.click(),
+  );
+  await wait(300);
+  await still.evaluate(() =>
+    Array.from(document.querySelectorAll('button')).find((b) => (b.innerText ?? '').trim().toLowerCase() === 'studio')?.click(),
+  );
+  await wait(3500);
+  const report = await still.evaluate(() => {
+    const canvas = document.querySelector('[data-holo]');
+    const scanlines = document.querySelector('.holo-scanlines');
+    return {
+      reduced: canvas?.getAttribute('data-holo-reduced'),
+      opacity: canvas?.getAttribute('data-holo-opacity'),
+      animation: scanlines ? getComputedStyle(scanlines).animationName : 'absent',
+    };
+  });
+  await still.close();
+  assert(report.reduced === 'true', `the clip kept animating (reduced=${report.reduced})`);
+  assert(report.opacity === '0.3', `the still frame changed opacity to ${report.opacity}`);
+  assert(report.animation === 'none', `scanline texture still animates (${report.animation})`);
+});
+
+await check('a phone gets one pane at a time, not a broken stack', async () => {
+  const phone = await browser.newPage();
+  await phone.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+  await phone.goto(base, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await wait(4500);
+  await phone.evaluate(() =>
+    Array.from(document.querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === 'More controls')?.click(),
+  );
+  await wait(300);
+  await phone.evaluate(() =>
+    Array.from(document.querySelectorAll('button')).find((b) => (b.innerText ?? '').trim().toLowerCase() === 'studio')?.click(),
+  );
+  await wait(3500);
+
+  const tabs = await phone.evaluate(() =>
+    Array.from(document.querySelectorAll('[role="tab"]')).map((tab) => tab.textContent.trim()),
+  );
+  assert(tabs.length === 3, `expected 3 panes, saw ${tabs.join(',')}`);
+
+  const visible = async () =>
+    phone.evaluate(() => {
+      const dialog = document.querySelector('[aria-label="Agent designer studio"]');
+      if (!dialog) return {};
+      const paneOf = (needle) => {
+        const node = Array.from(dialog.querySelectorAll('aside, section')).find((el) =>
+          (el.textContent ?? '').toLowerCase().includes(needle),
+        );
+        return node ? getComputedStyle(node).display !== 'none' : null;
+      };
+      return { palette: paneOf('component palette'), inspector: paneOf('inspector') };
+    });
+
+  const first = await visible();
+  assert(first.palette === true, 'the palette pane is not showing first');
+
+  await phone.evaluate(() => Array.from(document.querySelectorAll('[role="tab"]')).find((t) => /inspector/i.test(t.textContent ?? ''))?.click());
+  await wait(500);
+  const second = await visible();
+  assert(second.inspector === true, 'the inspector pane did not open');
+  assert(second.palette === false, 'two panes are showing at once');
+
+  const clipped = await phone.evaluate(() => {
+    const dialog = document.querySelector('[aria-label="Agent designer studio"]');
+    return dialog ? dialog.scrollWidth - dialog.clientWidth : 0;
+  });
+  await phone.close();
+  assert(clipped <= 2, `the dialog scrolls sideways by ${clipped}px on a phone`);
+});
+
 await check('no page errors during the whole run', () => {
   assert(pageErrors.length === 0, pageErrors.join(' | '));
 });

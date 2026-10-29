@@ -17,7 +17,8 @@
     "test:offline": "node scripts/test-artifacts.mjs && node scripts/test-ftp.mjs",
     "test:browser": "node scripts/test-browser.mjs",
     "test:browser:live": "node scripts/test-browser-live.mjs",
-    "test:ui": "node scripts/test-ui.mjs"
+    "test:ui": "node scripts/test-ui.mjs",
+    "test:studio": "node scripts/test-agent-studio.mjs"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "latest",
