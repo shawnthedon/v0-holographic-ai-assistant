@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { createAvatarRig, type AvatarRigHandle, type AvatarMode } from '@/lib/hud/avatar-face';
 import { telemetry } from '@/lib/hud/telemetry';
 import { useReducedMotion } from '@/lib/hud/motion';
+import { usePower } from '@/hooks/use-power';
 
 interface AvatarRigProps {
   mode: AvatarMode;
@@ -23,6 +24,7 @@ export function AvatarRig({ mode, className = '', onReady }: AvatarRigProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const rigRef = useRef<AvatarRigHandle | null>(null);
   const reduced = useReducedMotion();
+  const power = usePower();
   const [status, setStatus] = useState<'pending' | 'live' | 'failed'>('pending');
 
   useEffect(() => {
@@ -79,8 +81,21 @@ export function AvatarRig({ mode, className = '', onReady }: AvatarRigProps) {
     rigRef.current?.setHover(!reduced);
   }, [mode, reduced]);
 
+  // Battery decides the drawing-buffer resolution, not the feature set.
+  useEffect(() => {
+    rigRef.current?.setQuality(power.profile);
+  }, [power.profile]);
+
   return (
-    <div className={`relative ${className}`}>
+    /*
+     * No `relative` prefix here. It used to be \`relative ${className}\`, and the
+     * only caller passes "absolute inset-0" — so the element carried BOTH
+     * position utilities, `relative` won the cascade, and the wrapper collapsed
+     * to 0px tall because every child inside it is absolutely positioned. The
+     * canvas was sized 0 and the face was never actually visible. \`h-full
+     * w-full\` gives it a size without fighting the caller's positioning.
+     */
+    <div className={`h-full w-full ${className}`}>
       <div ref={hostRef} className="absolute inset-0" />
 
       {status !== 'live' && (

@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Analytics } from '@vercel/analytics/next'
+import { HudErrorBoundary } from '@/components/hud/error-boundary'
+import { OfflineProvider } from '@/components/offline-provider'
 
 import '@fontsource/rajdhani/400.css'
 import '@fontsource/rajdhani/500.css'
@@ -52,7 +54,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="font-sans antialiased">
-        {children}
+        {/* Top-level containment: a fault in any client panel must not blank
+            the console. */}
+        <HudErrorBoundary label="console">
+          <OfflineProvider>{children}</OfflineProvider>
+        </HudErrorBoundary>
         <Analytics />
       </body>
     </html>

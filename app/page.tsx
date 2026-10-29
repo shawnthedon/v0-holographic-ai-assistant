@@ -1,10 +1,11 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScanLine, TriangleAlert, X } from 'lucide-react';
 import { HudBackdrop } from '@/components/hud/backdrop';
 import { BootSequence, Reveal } from '@/components/hud/boot-sequence';
-import { HudPanel, ScanHeader, TickColumn } from '@/components/hud/chrome';
+import { HudPanel, LiveClock, ScanHeader, TickColumn } from '@/components/hud/chrome';
 import { CommandDock } from '@/components/hud/dock';
 import { ConsolePanel } from '@/components/hud/console-panel';
 import { HologramStage } from '@/components/hud/hologram-stage';
@@ -23,9 +24,42 @@ import {
   SensorPanel,
   SessionPanel,
 } from '@/components/hud/readouts';
-import { SettingsPanel } from '@/components/settings-panel';
-import { ModelPicker } from '@/components/hud/model-picker';
-import { LocalAiPanel } from '@/components/hud/local-ai-panel';
+import { HudErrorBoundary } from '@/components/hud/error-boundary';
+import { StatusStrip } from '@/components/hud/status-strip';
+
+/*
+ * Overlays are split out of the initial bundle. None of them is visible until
+ * the operator opens it, and together they were the biggest chunk of client JS:
+ * the local-AI panel alone carries the runtime loader, the GGUF parser and the
+ * download manager. Loading them on demand keeps the console's first paint to
+ * the part you can actually see.
+ */
+const SettingsPanel = dynamic(
+  () => import('@/components/settings-panel').then((mod) => mod.SettingsPanel),
+  { ssr: false },
+);
+const ModelPicker = dynamic(
+  () => import('@/components/hud/model-picker').then((mod) => mod.ModelPicker),
+  { ssr: false },
+);
+const LocalAiPanel = dynamic(
+  () => import('@/components/hud/local-ai-panel').then((mod) => mod.LocalAiPanel),
+  { ssr: false },
+);
+const BrowserPanel = dynamic(
+  () => import('@/components/hud/browser-panel').then((mod) => mod.BrowserPanel),
+  { ssr: false },
+);
+
+const AgentStudio = dynamic(
+  () => import('@/components/agent-studio/agent-studio').then((mod) => mod.AgentStudio),
+  { ssr: false },
+);
+
+const ArtifactPanel = dynamic(
+  () => import('@/components/hud/artifact-panel').then((mod) => mod.ArtifactPanel),
+  { ssr: false },
+);
 import { useDeviceAi } from '@/hooks/use-device-ai';
 import { FaceCapture } from '@/components/face-capture';
 import { useAiAssistant, type LLMModel, type VoiceProvider } from '@/hooks/use-ai-assistant';
@@ -45,10 +79,12 @@ export default function Home() {
   const [faceOpen, setFaceOpen] = useState(false);
   const [scanMode, setScanMode] = useState(0);
   const [scanPass, setScanPass] = useState(1);
-  const [clock, setClock] = useState('--:--:--');
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [localAiOpen, setLocalAiOpen] = useState(false);
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [studioOpen, setStudioOpen] = useState(false);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const device = useDeviceAi();
   const {
@@ -61,6 +97,9 @@ export default function Home() {
     discover,
     discovering,
     discoverError,
+    discoverFailures,
+    discovery,
+    refreshDiscovery,
     reload: reloadCatalogue,
   } = useModelCatalogue();
   const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>('google');
@@ -156,6 +195,30 @@ export default function Home() {
     telemetry.logEvent('console initialised', 'good');
   }, []);
 
+  /**
+   * Surface runtime faults instead of swallowing them. A rejected promise or an
+   * uncaught error used to disappear into the browser console — which is why a
+   * crashing transcript left no trace to diagnose. Only the failure text is
+   * recorded; prompts and replies never reach the insight log.
+   */
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      telemetry.logEvent(`runtime fault · ${String(event.message).slice(0, 90)}`, 'warn');
+    };
+    const onRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      const text =
+        reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason ?? 'unknown');
+      telemetry.logEvent(`unhandled rejection · ${text.slice(0, 90)}`, 'warn');
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, []);
+
   /* -------------------- derived machine state -------------------- */
   const mode: AvatarMode = isPersonaProcessing
     ? 'speaking'
@@ -184,32 +247,6 @@ export default function Home() {
   useEffect(() => {
     telemetry.logEvent(`avatar mode · ${mode}`);
   }, [mode]);
-
-  // scan progress mirrors the real frame rate once the renderer is warm
-  const [progress, setProgress] = useState(42);
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      const fps = telemetry.get('fps');
-      if (fps > 0) {
-        setProgress(Math.round(Math.min(100, Math.max(8, (fps / 60) * 100))));
-      }
-    }, 1200);
-    return () => window.clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    const tick = () =>
-      setClock(
-        new Date().toLocaleTimeString('en-GB', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        }),
-      );
-    tick();
-    const timer = window.setInterval(tick, 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   const cycleMode = useCallback((direction: 1 | -1) => {
     setScanMode((current) => (current + direction + MODE_COUNT) % MODE_COUNT);
@@ -251,15 +288,9 @@ export default function Home() {
 
       {/* ---------------------------- shell ---------------------------- */}
       <div className="relative z-10 flex h-full flex-col pb-[88px] md:pb-0">
-        <ScanHeader
-          mode={scanMode}
-          onCycle={cycleMode}
-          progress={progress}
-          status={status}
-          subjectId="01001"
-          clock={clock}
-          uptime={uptime}
-        />
+        {/* clock, uptime and scan progress are owned by ScanHeader itself so the
+            page tree is not re-rendered once a second */}
+        <ScanHeader mode={scanMode} onCycle={cycleMode} status={status} subjectId="01001" />
 
         <div className="relative flex min-h-0 flex-1 items-stretch gap-2 px-3 pt-2 sm:gap-3 sm:px-5">
           {/* ---------------- left rail ---------------- */}
@@ -275,6 +306,12 @@ export default function Home() {
             </Reveal>
 
             <Reveal delay={220} className="flex-none">
+              <HudPanel title="system" meta="sync" className="flex-none" bodyClassName="px-2.5 py-2">
+                <StatusStrip />
+              </HudPanel>
+            </Reveal>
+
+            <Reveal delay={240} className="flex-none">
               <SensorPanel live={live} className="h-[118px]" />
             </Reveal>
 
@@ -430,8 +467,8 @@ export default function Home() {
           <span className="flex items-center gap-1.5">
             <ScanLine size={9} /> {status}
           </span>
+          <StatusStrip />
           <LiveMeta metric="fps" precision={0} suffix=" fps" />
-          <span className="text-[color:var(--hud-ink)]">{clock}</span>
         </div>
       </div>
 
@@ -471,12 +508,27 @@ export default function Home() {
         onDeepScan={deepScan}
         onModels={() => setPickerOpen(true)}
         onLocalAi={() => setLocalAiOpen(true)}
+        onArtifacts={() => setArtifactsOpen(true)}
+        onBrowser={() => {
+          telemetry.bump('interactions');
+          setBrowserOpen(true);
+        }}
+        onStudio={() => {
+          telemetry.bump('interactions');
+          setStudioOpen(true);
+        }}
         localLabel={device.loaded ? 'loaded' : `${device.models.length} installed`}
         modelLabel={
           selectedModel?.label ??
           device.models.find((model) => model.id === selectedModelId)?.name
         }
       />
+
+      <ArtifactPanel open={artifactsOpen} onClose={() => setArtifactsOpen(false)} />
+
+      <BrowserPanel open={browserOpen} onClose={() => setBrowserOpen(false)} />
+
+      <AgentStudio open={studioOpen} onClose={() => setStudioOpen(false)} />
 
       <LocalAiPanel
         open={localAiOpen}
@@ -502,6 +554,9 @@ export default function Home() {
         onDiscover={discover}
         discoverError={discoverError}
         discovering={discovering}
+        discoverFailures={discoverFailures}
+        discovery={discovery}
+        onRefreshDiscovery={refreshDiscovery}
         onReload={reloadCatalogue}
         deviceModels={device.models}
         loadedLocalId={device.loaded?.modelId ?? null}
@@ -512,6 +567,7 @@ export default function Home() {
         loading={catalogueLoading}
       />
 
+      <HudErrorBoundary label="transcript">
       <ConsolePanel
         open={consoleOpen}
         onClose={() => setConsoleOpen(false)}
@@ -524,6 +580,7 @@ export default function Home() {
         thinking={thinking}
         model={selectedModel?.label ?? selectedModelId}
       />
+      </HudErrorBoundary>
 
       <FaceCapture
         open={faceOpen}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Globe2,
   BrainCircuit,
   Camera,
   Sparkles,
@@ -11,6 +12,8 @@ import {
   ScanFace,
   Settings,
   HardDriveDownload,
+  FolderArchive,
+  FlaskConical,
 } from 'lucide-react';
 import { animate, type JSAnimation } from 'animejs';
 import { EASE, useReducedMotion } from '@/lib/hud/motion';
@@ -25,6 +28,12 @@ interface DockProps {
   onDeepScan: () => void;
   onModels?: () => void;
   onLocalAi?: () => void;
+  onBrowser?: () => void;
+  browserLabel?: string;
+  onStudio?: () => void;
+  studioLabel?: string;
+  onArtifacts?: () => void;
+  artifactLabel?: string;
   localLabel?: string;
   modelLabel?: string;
   chatOpen?: boolean;
@@ -44,6 +53,12 @@ export function CommandDock({
   onDeepScan,
   onModels,
   onLocalAi,
+  onArtifacts,
+  onBrowser,
+  browserLabel,
+  onStudio,
+  studioLabel,
+  artifactLabel,
   localLabel,
   modelLabel,
   chatOpen = false,
@@ -151,6 +166,15 @@ export function CommandDock({
             ...(onLocalAi
               ? [{ icon: HardDriveDownload, label: localLabel ? `Local AI · ${localLabel}` : 'Local AI', action: onLocalAi, active: false }]
               : []),
+            ...(onArtifacts
+              ? [{ icon: FolderArchive, label: artifactLabel ? `Artifacts · ${artifactLabel}` : 'Artifacts', action: onArtifacts, active: false }]
+              : []),
+            ...(onBrowser
+              ? [{ icon: Globe2, label: browserLabel ? `Browser · ${browserLabel}` : 'Browser', action: onBrowser, active: false }]
+              : []),
+            ...(onStudio
+              ? [{ icon: FlaskConical, label: studioLabel ? `Studio · ${studioLabel}` : 'Studio', action: onStudio, active: false }]
+              : []),
             { icon: Camera, label: 'Biometric capture', action: onFaceToggle, active: false },
             { icon: MessageSquare, label: 'Transcript', action: onChatToggle, active: chatOpen },
             { icon: Settings, label: 'Settings', action: onSettings, active: false },
@@ -162,7 +186,7 @@ export function CommandDock({
                 item.action();
                 setExpanded(false);
               }}
-              className={`dock-magnet group relative flex h-10 w-10 items-center justify-center rounded-full border backdrop-blur-md transition-colors duration-200 sm:h-11 sm:w-11 ${
+              className={`dock-magnet group relative flex h-10 w-10 items-center justify-center rounded-full border transition-colors duration-200 sm:h-11 sm:w-11 ${
                 item.active
                   ? 'border-[color:var(--hud-lime)]/70 bg-[color:var(--hud-lime)]/15 text-[color:var(--hud-lime)]'
                   : 'border-[color:var(--hud-line-strong)] bg-[#041014]/80 text-[color:var(--hud-ink)]/80 hover:border-[color:var(--hud-ink)]/70 hover:text-[color:var(--hud-ink)]'
@@ -183,7 +207,7 @@ export function CommandDock({
         </div>
 
         {/* dock rail */}
-        <div className="relative flex items-center gap-1 rounded-full border border-[color:var(--hud-line-strong)] bg-[#030c10]/85 px-2 py-2 shadow-[0_0_40px_rgba(0,200,255,0.12)] backdrop-blur-xl">
+        <div className="relative flex items-center gap-1 rounded-full border border-[color:var(--hud-line-strong)] bg-[#030c10]/95 px-2 py-2 shadow-[0_0_40px_rgba(0,200,255,0.12)]">
           <button
             type="button"
             onClick={() => setExpanded((value) => !value)}

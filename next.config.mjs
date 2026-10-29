@@ -8,6 +8,12 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  /*
+   * The browser agent launches a Chromium binary that is shipped inside
+   * @sparticuz/chromium. Bundling it would try to trace a 50 MB executable and
+   * its shared libraries into the server build, so both packages stay external.
+   */
+  serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
 }
 
 export default nextConfig

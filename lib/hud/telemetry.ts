@@ -124,6 +124,8 @@ class HudTelemetry {
   private lastFrameAt = 0;
   private lastTickAt = 0;
   private lastPingAt = 0;
+  /** Publish cadence. The power governor lowers this on battery. */
+  private notifyMs = 200;
   private lastDomSampleAt = 0;
   private heartbeat = 0;
   private startedAt = typeof performance !== 'undefined' ? performance.now() : 0;
@@ -145,6 +147,23 @@ class HudTelemetry {
 
   patch(values: Partial<HudMetrics>) {
     Object.assign(this.metrics, values);
+  }
+
+  /**
+   * Sampling rate is a battery decision, not a constant: on the saver profile
+   * the console publishes at 1 Hz instead of 5 Hz, which removes four fifths of
+   * the render churn without losing any *information* — the numbers are the same
+   * numbers, just sampled less often.
+   */
+  setProfile(profile: 'full' | 'balanced' | 'saver') {
+    const next = profile === 'saver' ? 1000 : profile === 'balanced' ? 250 : 200;
+    if (this.notifyMs === next) return;
+    this.notifyMs = next;
+    this.notify();
+  }
+
+  get notifyIntervalMs(): number {
+    return this.notifyMs;
   }
 
   bump(key: 'interactions' | 'scanPasses' | 'messages', by = 1) {
@@ -351,8 +370,8 @@ class HudTelemetry {
       this.set('micActive', 0);
     }
 
-    /* ---- 5 Hz notification cadence ---- */
-    if (now - this.lastTickAt >= 200) {
+    /* ---- notification cadence (5 Hz, or lower on battery) ---- */
+    if (now - this.lastTickAt >= this.notifyMs) {
       const elapsed = now - this.lastTickAt;
       this.lastTickAt = now;
 

@@ -118,6 +118,77 @@ faking an image. Full report, verification evidence and the PASS/BLOCKED matrix:
 npm run test:device-ai   # 35 executed checks: GGUF parser, rejection paths, URL/path guards
 ```
 
+## Agent browser — long-running tasks
+
+Dock → **Browser** opens the live observation panel. A task has an objective, a plan, a
+deadline, success criteria and a budget; the runner keeps working while you are away and
+stops honestly when it cannot continue.
+
+- **Real Chromium**, not a parser: bundled `@sparticuz/chromium` driven by `puppeteer-core`,
+  with per-task browser contexts, fixed locale/viewport, accessibility-tree targeting,
+  cookie + `localStorage` capture, screenshots and downloads.
+- **Watchdog**: last action, last verified milestone, current operation, consecutive
+  failures, repeats and time-to-deadline are all tracked. A page that stays open is *not*
+  progress — the task enters `RECOVERING` instead of waiting forever.
+- **Bounded recovery**: wait → reload → re-inspect → re-locate → different interaction
+  method → authorised alternative → defer → stop. No retry repeats itself unchanged.
+- **Safe retries**: a sensitive step (payment, submission, account change) is checked for
+  effect before any retry — if it already happened it is not repeated.
+- **Loop detection**: same click on an unchanged page, A↔B ping-pong, identical results,
+  repeated errors, and any repeat after a block.
+- **Checkpoints that survive**: tasks persist to disk, and after a crash or restart they
+  come back as `RECOVERING`, inspect the checkpointed page, and only then continue.
+- **Honest states only**: `QUEUED → RUNNING → RECOVERING → WAITING_FOR_USER → COMPLETED`
+  plus `FAILED / BLOCKED / CANCELLED / TIMED_OUT`. `COMPLETED` requires every success
+  criterion to verify against the live page, with evidence captured.
+
+```bash
+npm run test:browser        # 31 checks — AT-15 … AT-26 on a scripted engine
+npm run test:browser:live   #  7 checks — real Chromium, fixture site, SIGKILL recovery
+npm run test:ui             # 15 checks — the built console driven in a real browser
+```
+
+Design, the stealth limitations we do **not** claim, deployment variables and the full
+PASS/BLOCKED matrix: [`docs/BROWSER_AGENT.md`](docs/BROWSER_AGENT.md).
+
+## Artifacts, file manager and FTP
+
+Agents produce files; the console keeps them. Dock → **Artifacts** opens a file manager over
+IndexedDB with five kinds (`code`, `config`, `report`, `data`, `custom`) derived from the
+extension, honest previews (text and tables render, PDF/DOCX/XLSX say "download only"),
+inline rename, delete, download, paste-create, disk import, SHA-256 per file and a
+storage/quota readout.
+
+Fenced blocks in an agent reply (`python analyze.py`, `json pipeline.json`) are captured
+automatically — at most 8 per message, deduplicated, prose ignored.
+
+**FTP to a remote host** runs server-side (a browser cannot open a raw socket) behind a
+mandatory allowlist: set `FTP_ALLOWED_HOSTS` before you rely on it. Every result is
+explicit: success names the host and directory, and every failure is a code plus a fix
+(`ftp-auth-failed`, `ftp-host-blocked`, `ftp-timeout`, …). Passwords stay in memory and
+`sessionStorage` for the tab, never in IndexedDB, the queue or the logs.
+
+## Offline-first and battery
+
+- **Offline works**: the shell is precached by a service worker, artifacts and the task
+  queue live in IndexedDB, and a queued FTP upload survives a reload — including a reload
+  while still offline — then drains by itself on reconnect with byte-identical content.
+- **Degradation is visible, not silent**: the SYSTEM strip reports the real connection,
+  the real pending/failed count, the battery profile and whether the worker is installed.
+- **Battery-aware**: one governor sets every cadence — 60/45/20 fps, 5/4/1 Hz telemetry,
+  ambient motion paused in saver mode, pixel ratio dropping before frame rate. Missing
+  Battery Status API is reported as unsupported, not faked.
+- **Split, deferred, offloaded**: settings/model/local-AI/artifact panels are lazy-loaded,
+  maintenance runs through `requestIdleCallback`, and hashing/extraction run in a worker.
+
+```bash
+node scripts/test-artifacts.mjs   # 36 checks — naming, kinds, extraction, FTP guard, queue
+node scripts/test-ftp.mjs         # 7 checks — real ftp-srv upload, auth failure, allowlist
+```
+
+Full design, env vars, verification matrix and the BLOCKED items:
+[`docs/ARTIFACTS.md`](docs/ARTIFACTS.md).
+
 ## The avatar
 
 `lib/hud/avatar-face.ts` drives a three.js face rig rendered into the projector
@@ -152,6 +223,11 @@ Runtime env (both optional — the console runs standalone without them):
 | Variable | Purpose |
 |---|---|
 | `NEXT_PUBLIC_BACKEND_URL` | WebSocket endpoint for full-duplex audio streaming |
+| `BROWSER_EXECUTABLE_PATH` | Use a system Chrome/Chromium instead of the bundled browser |
+| `BROWSER_WS_ENDPOINT` | Connect the agent to a remote browser service |
+| `BROWSER_TASK_DIR` | Task records, checkpoints and evidence screenshots (default `./.nexus/browser`) |
+| `FTP_ALLOWED_HOSTS` | Required allowlist for artifact uploads, e.g. `ftp.example.com,*.mirror.example` |
+| `FTP_ALLOW_ANY` | `1` disables the allowlist — only for a trusted private deployment |
 | Gateway/provider keys | used by the `/api/*` routes for chat, speech and voice cloning |
 
 Deploy from the repo root with `vercel` or by connecting the GitHub repo; the

@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { animate, stagger } from 'animejs';
 import { EASE, useReducedMotion } from '@/lib/hud/motion';
+import { telemetry } from '@/lib/hud/telemetry';
+import { useUptime } from '@/hooks/use-hud-telemetry';
 
 /* ------------------------------------------------------------------ */
 /*  Frame furniture                                                    */
@@ -100,23 +102,68 @@ export function TickColumn({
 
 export const SCAN_MODES = ['NEURAL', 'VOCAL', 'OCULAR', 'SYNAPTIC'] as const;
 
+/**
+ * The three values that change every second — the clock, the uptime and the
+ * render-progress bar — are owned by this component, not by the page.
+ *
+ * They used to live in `Home`. Every tick re-rendered the whole console tree
+ * (≈1,000 nodes, eight canvases, the WebGL host) once a second, which is
+ * exactly the kind of churn that reads as "the UI is sluggish". Now the page
+ * only re-renders when something structural changes.
+ */
+export function LiveClock() {
+  const [clock, setClock] = useState(() => '--:--:--');
+  useEffect(() => {
+    const tick = () =>
+      setClock(
+        new Date().toLocaleTimeString('en-GB', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }),
+      );
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return <span className="tabular-nums text-[color:var(--hud-ink)]/80">{clock}</span>;
+}
+
+/** Scans progress = real frame health, sampled from telemetry (never invented). */
+function useScanProgress(initial = 42) {
+  const [progress, setProgress] = useState(initial);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const fps = telemetry.get('fps');
+      if (fps > 0) setProgress(Math.round(Math.min(100, Math.max(8, (fps / 60) * 100))));
+    }, 1200);
+    return () => window.clearInterval(id);
+  }, []);
+  return progress;
+}
+
 export function ScanHeader({
   mode,
   onCycle,
-  progress,
+  progress: progressProp,
   status,
   subjectId,
-  clock,
-  uptime,
+  clock: clockProp,
+  uptime: uptimeProp,
 }: {
   mode: number;
   onCycle: (direction: 1 | -1) => void;
-  progress: number;
+  progress?: number;
   status: string;
   subjectId: string;
-  clock: string;
+  clock?: string;
   uptime?: string;
 }) {
+  const sampledProgress = useScanProgress();
+  const liveUptime = useUptime();
+  const progress = progressProp ?? sampledProgress;
+  // Hooks must run unconditionally; the prop simply wins when supplied.
+  const uptime = uptimeProp ?? liveUptime;
   const labelRef = useRef<HTMLSpanElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
@@ -195,7 +242,11 @@ export function ScanHeader({
               up <span className="tabular-nums text-[color:var(--hud-ink)]/80">{uptime}</span>
             </span>
           )}
-          <span className="tabular-nums text-[color:var(--hud-ink)]/80">{clock}</span>
+          {clockProp ? (
+            <span className="tabular-nums text-[color:var(--hud-ink)]/80">{clockProp}</span>
+          ) : (
+            <LiveClock />
+          )}
         </div>
       </div>
 

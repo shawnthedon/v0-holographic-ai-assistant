@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { catalogue, discoverProvider, isVerified, preferredModelId, providers } from '@/lib/llm/service';
+import {
+  catalogue,
+  discoverAll,
+  discoverProvider,
+  isVerified,
+  preferredModelId,
+  providers,
+} from '@/lib/llm/service';
 import { DEFAULT_MODEL_ID } from '@/lib/llm/catalogue';
 import { LLMError, type ModelRole, type ProviderId } from '@/lib/llm/types';
 
@@ -10,6 +17,8 @@ export const dynamic = 'force-dynamic';
  * GET /api/models
  *   ?roles=chat,speech-out   filter by capability
  *   ?discover=openrouter     also ask the provider what it currently serves
+ *   ?discover=all            ask every provider what it serves, in parallel
+ *   ?refresh=1               bypass the 5-minute discovery cache
  *   ?provider=openai         restrict to one provider
  *
  * Returns the catalogue plus which providers this deployment can actually use,
@@ -46,8 +55,21 @@ export async function GET(request: NextRequest) {
 
     let discovered: Awaited<ReturnType<typeof discoverProvider>> | undefined;
     let discoverError: { code: string; message: string; fix: string } | undefined;
+    let discoverFailures: unknown[] | undefined;
+    let discovery: { fetchedAt: string; cached: boolean; counts: Record<string, number> } | undefined;
+    const refresh = params.get('refresh') === '1';
 
-    if (discoverParam) {
+    if (discoverParam === 'all') {
+      // One fan-out, cached 5 minutes. A provider that fails is reported
+      // individually — it must not hide the providers that answered.
+      const result = await discoverAll({
+        providerIds: providerFilter ? [providerFilter] : undefined,
+        refresh,
+      });
+      discovered = result.models;
+      discoverFailures = result.failures;
+      discovery = { fetchedAt: result.fetchedAt, cached: result.cached, counts: result.counts };
+    } else if (discoverParam) {
       try {
         discovered = await discoverProvider(discoverParam as ProviderId);
       } catch (error) {
@@ -78,6 +100,8 @@ export async function GET(request: NextRequest) {
           verified: isVerified(entry.id),
         })),
         discoverError,
+        discoverFailures,
+        discovery,
       },
       { headers: { 'Cache-Control': 'no-store' } },
     );

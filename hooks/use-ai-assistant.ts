@@ -4,6 +4,8 @@ import { useCallback, useRef, useState } from 'react';
 import { getWebSocketClient } from '@/lib/websocket-client';
 import * as deviceAi from '@/lib/device-ai/service';
 import { toPayload } from '@/lib/device-ai/types';
+import { captureFromAgent } from '@/lib/artifacts/service';
+import { telemetry } from '@/lib/hud/telemetry';
 
 /** Any model id from GET /api/models, e.g. 'openrouter/qwen-2.5-72b-instruct'. */
 export type LLMModel = string;
@@ -20,6 +22,25 @@ interface AssistantMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+}
+
+/**
+ * The transcript is capped. An unbounded message array means an unbounded
+ * render tree and an unbounded request body — the two things that turn a long
+ * conversation into a slow tab and, eventually, a killed one.
+ */
+const MAX_TRANSCRIPT = 60;
+/** Turns sent upstream. The server caps at 24 as well. */
+const MAX_CONTEXT_TURNS = 12;
+/** A reply that never arrives must not leave the console stuck on "thinking". */
+const CHAT_TIMEOUT_MS = 120_000;
+
+function appendMessage(
+  current: AssistantMessage[],
+  message: AssistantMessage,
+): AssistantMessage[] {
+  const next = [...current, message];
+  return next.length > MAX_TRANSCRIPT ? next.slice(-MAX_TRANSCRIPT) : next;
 }
 
 /** A model id of the form `local/…` runs on this device, never in the cloud. */
@@ -138,7 +159,13 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
         });
 
         if (!response.ok) {
-          throw new Error('Speech synthesis failed');
+          throw new Error(`Speech synthesis unavailable (${response.status})`);
+        }
+        // A JSON/HTML error body must never reach decodeAudioData: that throws a
+        // DOMException which some engines surface as an unhandled rejection.
+        const contentType = response.headers.get('content-type') ?? '';
+        if (!contentType.startsWith('audio/')) {
+          throw new Error(`Speech endpoint returned ${contentType || 'no content type'}`);
         }
 
         const audioBuffer = await response.arrayBuffer();
@@ -172,6 +199,26 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
     [options]
   );
 
+  /**
+   * Turn fenced files in a reply into artifacts — asynchronously, and never at
+   * the cost of the reply itself. A capture failure is logged, not thrown: the
+   * conversation is more important than the file.
+   */
+  const captureArtifacts = useCallback((text: string, agentName: string) => {
+    void captureFromAgent(text, { agentName })
+      .then((created) => {
+        if (created.length > 0) {
+          telemetry.logEvent(
+            `${created.length} artifact${created.length === 1 ? '' : 's'} captured`,
+            'good',
+          );
+        }
+      })
+      .catch((error) => {
+        console.warn('[artifacts] capture failed', error);
+      });
+  }, []);
+
   // Handle user message
   const handleUserMessage = useCallback(
     async (content: string) => {
@@ -187,7 +234,7 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
         content,
         timestamp: Date.now(),
       };
-      setMessages((prev) => [...prev, userMessage]);
+      setMessages((prev) => appendMessage(prev, userMessage));
 
       try {
         // ---- on-device path (spec §8): no network, no cloud fallback ----
@@ -220,10 +267,11 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
           );
 
           const text = result.text || streamed;
-          setMessages((prev) => [
-            ...prev,
-            { role: 'assistant', content: text, timestamp: Date.now() },
-          ]);
+          setMessages((prev) =>
+            appendMessage(prev, { role: 'assistant', content: text, timestamp: Date.now() }),
+          );
+          // Files the model emitted become artifacts on device, immediately.
+          captureArtifacts(text, loaded);
           try {
             await wsClientRef.current.sendVisemeRequest(text);
           } catch {
@@ -234,16 +282,28 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
         }
 
         // Send to backend for LLM processing
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: content,
-            model: options.model,
-            endpoint: options.customEndpoint,
-            messages: messages,
-          }),
-        });
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+        let response: Response;
+        try {
+          response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+              message: content,
+              model: options.model,
+              endpoint: options.customEndpoint,
+              // Only the recent context, with roles the provider accepts.
+              messages: messages.slice(-MAX_CONTEXT_TURNS).map((message) => ({
+                role: message.role,
+                content: message.content,
+              })),
+            }),
+          });
+        } finally {
+          window.clearTimeout(timeout);
+        }
 
         if (!response.ok) {
           // the route returns { error, code, fix } for every LLM failure
@@ -271,7 +331,8 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
           content: assistantResponse,
           timestamp: Date.now(),
         };
-        setMessages((prev) => [...prev, assistantMessage]);
+        setMessages((prev) => appendMessage(prev, assistantMessage));
+        captureArtifacts(assistantResponse, options.model);
 
         // Generate speech
         await synthesizeSpeech(assistantResponse);
@@ -293,7 +354,7 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
         setIsProcessing(false);
       }
     },
-    [options, messages, synthesizeSpeech]
+    [captureArtifacts, options, messages, synthesizeSpeech]
   );
 
   // Send text message directly
