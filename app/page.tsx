@@ -46,6 +46,11 @@ const LocalAiPanel = dynamic(
   () => import('@/components/hud/local-ai-panel').then((mod) => mod.LocalAiPanel),
   { ssr: false },
 );
+const BrowserPanel = dynamic(
+  () => import('@/components/hud/browser-panel').then((mod) => mod.BrowserPanel),
+  { ssr: false },
+);
+
 const ArtifactPanel = dynamic(
   () => import('@/components/hud/artifact-panel').then((mod) => mod.ArtifactPanel),
   { ssr: false },
@@ -73,6 +78,7 @@ export default function Home() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [localAiOpen, setLocalAiOpen] = useState(false);
   const [artifactsOpen, setArtifactsOpen] = useState(false);
+  const [browserOpen, setBrowserOpen] = useState(false);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const device = useDeviceAi();
   const {
@@ -497,6 +503,10 @@ export default function Home() {
         onModels={() => setPickerOpen(true)}
         onLocalAi={() => setLocalAiOpen(true)}
         onArtifacts={() => setArtifactsOpen(true)}
+        onBrowser={() => {
+          telemetry.bump('interactions');
+          setBrowserOpen(true);
+        }}
         localLabel={device.loaded ? 'loaded' : `${device.models.length} installed`}
         modelLabel={
           selectedModel?.label ??
@@ -505,6 +515,8 @@ export default function Home() {
       />
 
       <ArtifactPanel open={artifactsOpen} onClose={() => setArtifactsOpen(false)} />
+
+      <BrowserPanel open={browserOpen} onClose={() => setBrowserOpen(false)} />
 
       <LocalAiPanel
         open={localAiOpen}

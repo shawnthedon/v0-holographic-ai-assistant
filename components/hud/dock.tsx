@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Globe2,
   BrainCircuit,
   Camera,
   Sparkles,
@@ -26,6 +27,8 @@ interface DockProps {
   onDeepScan: () => void;
   onModels?: () => void;
   onLocalAi?: () => void;
+  onBrowser?: () => void;
+  browserLabel?: string;
   onArtifacts?: () => void;
   artifactLabel?: string;
   localLabel?: string;
@@ -48,6 +51,8 @@ export function CommandDock({
   onModels,
   onLocalAi,
   onArtifacts,
+  onBrowser,
+  browserLabel,
   artifactLabel,
   localLabel,
   modelLabel,
@@ -158,6 +163,9 @@ export function CommandDock({
               : []),
             ...(onArtifacts
               ? [{ icon: FolderArchive, label: artifactLabel ? `Artifacts · ${artifactLabel}` : 'Artifacts', action: onArtifacts, active: false }]
+              : []),
+            ...(onBrowser
+              ? [{ icon: Globe2, label: browserLabel ? `Browser · ${browserLabel}` : 'Browser', action: onBrowser, active: false }]
               : []),
             { icon: Camera, label: 'Biometric capture', action: onFaceToggle, active: false },
             { icon: MessageSquare, label: 'Transcript', action: onChatToggle, active: chatOpen },
