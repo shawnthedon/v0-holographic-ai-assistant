@@ -327,3 +327,23 @@ The AI Avatar Cloning System is now ready for integration testing. All core comp
 **Build Date**: July 2, 2026
 **Implementation Time**: ~4 hours
 **Next Review**: Post-integration testing phase
+
+
+---
+
+# On-Device AI (added 29 October 2026)
+
+**Status:** text inference IMPLEMENTED · image generation NOT IMPLEMENTED (reported unavailable)
+**Report:** [`docs/ON_DEVICE_AI.md`](docs/ON_DEVICE_AI.md)
+
+| Area | State |
+|---|---|
+| GGUF import + container validation | Implemented; 6 rejection paths executed in `npm run test:device-ai` |
+| Model download manager (streamed, resume, cancel) | Implemented; end-to-end run BLOCKED (needs a browser) |
+| Load / unload / delete with persisted states | Implemented; runtime execution BLOCKED (needs a browser) |
+| Offline generation, no cloud fallback | Implemented; airplane-mode test BLOCKED (needs a device) |
+| Local image generation | **Not implemented** — unavailable state shown, no mock output |
+| Regression | `tsc` 0 errors, `next build` clean, all pre-existing routes intact |
+
+Acceptance criteria MM-01…MM-15 are tabulated with PASS/BLOCKED verdicts in the report;
+nothing is marked PASS from code inspection alone.

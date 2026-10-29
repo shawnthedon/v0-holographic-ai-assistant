@@ -6,6 +6,8 @@ import { Check, Cpu, Radio, RefreshCw, Search, ShieldCheck, TriangleAlert, X } f
 import { EASE, useReducedMotion } from '@/lib/hud/motion';
 import type { CatalogueModel } from '@/hooks/use-model-catalogue';
 import type { ProviderId, ProviderStatus } from '@/lib/llm/types';
+import type { LocalModel } from '@/lib/device-ai/types';
+import { formatBytes } from '@/lib/device-ai/catalogue';
 
 type RoleFilter = 'all' | 'chat' | 'code' | 'vision' | 'omni' | 'speech-out';
 
@@ -20,6 +22,10 @@ interface ModelPickerProps {
   discoverError: string | null;
   discovering: ProviderId | null;
   onReload?: () => void;
+  /** Installed on-device models — selectable exactly like cloud models. */
+  deviceModels?: LocalModel[];
+  loadedLocalId?: string | null;
+  onOpenLocalAi?: () => void;
   loading?: boolean;
 }
 
@@ -63,6 +69,9 @@ export function ModelPicker({
   discoverError,
   discovering,
   onReload,
+  deviceModels = [],
+  loadedLocalId = null,
+  onOpenLocalAi,
   loading = false,
 }: ModelPickerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -238,6 +247,68 @@ export function ModelPicker({
             </p>
           )}
 
+          {/* on-device models first: local inference is a first-class choice */}
+          {deviceModels
+            .filter((model) => (role === 'all' ? true : role === 'chat' || role === 'code'))
+            .filter((model) =>
+              !query.trim()
+                ? true
+                : `${model.name} ${model.id}`.toLowerCase().includes(query.trim().toLowerCase()),
+            )
+            .map((model) => {
+              const isSelected = model.id === selectedModelId;
+              const ready = model.state === 'installed' || model.state === 'loaded';
+              return (
+                <button
+                  key={model.id}
+                  type="button"
+                  onClick={() => {
+                    onSelect(model.id);
+                    onClose();
+                  }}
+                  disabled={!ready}
+                  className={`model-row group flex w-full items-start gap-3 rounded px-2.5 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isSelected ? 'bg-[color:var(--hud-lime)]/10' : 'hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <span
+                    className={`mt-[3px] flex h-4 w-4 flex-none items-center justify-center rounded-full border ${
+                      isSelected
+                        ? 'border-[color:var(--hud-lime)] text-[color:var(--hud-lime)]'
+                        : 'border-[color:var(--hud-line-strong)] text-transparent'
+                    }`}
+                  >
+                    <Check size={10} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-mono text-[11px] tracking-[0.08em] text-[color:var(--hud-ink)]">
+                        {model.name}
+                      </span>
+                      <span className="font-mono text-[7px] uppercase tracking-[0.2em] text-[color:var(--hud-lime)]">
+                        on-device
+                      </span>
+                      {model.id === loadedLocalId && (
+                        <span className="flex items-center gap-1 font-mono text-[7px] uppercase tracking-[0.18em] text-[color:var(--hud-lime)]">
+                          <ShieldCheck size={9} /> in memory
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-[2px] flex flex-wrap items-center gap-x-2 gap-y-[2px] font-mono text-[7px] uppercase tracking-[0.16em] text-[color:var(--hud-ink-dim)]">
+                      <span className="flex items-center gap-1">
+                        <Cpu size={9} /> offline · wasm
+                      </span>
+                      <span>{model.quantization}</span>
+                      <span>{formatBytes(model.sizeBytes)}</span>
+                      {model.contextLength ? <span>{model.contextLength} ctx</span> : null}
+                      <span className="text-[color:var(--hud-mint)]">{model.state}</span>
+                      {!ready && <span className="text-[#ffd27a]">load it in Local AI</span>}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+
           {filtered.map((entry) => {
             const provider = providerById.get(entry.provider);
             const isSelected = entry.id === selectedModelId;
@@ -354,6 +425,15 @@ export function ModelPicker({
               </span>
             )}
             {sweepError && <span className="text-[#ff9d7a]">{sweepError}</span>}
+            {onOpenLocalAi && (
+              <button
+                type="button"
+                onClick={onOpenLocalAi}
+                className="rounded border border-[color:var(--hud-line)] px-2 py-[3px] font-mono text-[7px] uppercase tracking-[0.2em] text-[color:var(--hud-ink-dim)] transition hover:border-[color:var(--hud-lime)] hover:text-[color:var(--hud-lime)]"
+              >
+                local ai · {deviceModels.length}
+              </button>
+            )}
           </span>
           <span className="flex items-center gap-3">
             <button

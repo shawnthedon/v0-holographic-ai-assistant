@@ -2,6 +2,8 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { getWebSocketClient } from '@/lib/websocket-client';
+import * as deviceAi from '@/lib/device-ai/service';
+import { toPayload } from '@/lib/device-ai/types';
 
 /** Any model id from GET /api/models, e.g. 'openrouter/qwen-2.5-72b-instruct'. */
 export type LLMModel = string;
@@ -18,6 +20,11 @@ interface AssistantMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+}
+
+/** A model id of the form `local/…` runs on this device, never in the cloud. */
+export function isLocalModelId(modelId: string): boolean {
+  return modelId.startsWith('local/');
 }
 
 export function useAiAssistant(options: UseAiAssistantOptions) {
@@ -114,6 +121,57 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
     }
   }, [isListening, initializeSpeechRecognition]);
 
+  // Text-to-speech synthesis
+  const synthesizeSpeech = useCallback(
+    async (text: string) => {
+      try {
+        console.log('[v0] Synthesizing speech for:', text.substring(0, 50));
+
+        const response = await fetch('/api/speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            provider: options.voiceProvider,
+            speed: options.speechSpeed,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Speech synthesis failed');
+        }
+
+        const audioBuffer = await response.arrayBuffer();
+
+        // Best-effort: the duplex socket is optional, playback is not.
+        try {
+          await wsClientRef.current.sendAudio(audioBuffer, 16000);
+        } catch {
+          /* no duplex backend — continue with local playback */
+        }
+
+        // Play audio locally
+        if (!audioContextRef.current) {
+          audioContextRef.current = new (window.AudioContext ||
+            (window as any).webkitAudioContext)();
+        }
+
+        const audioContext = audioContextRef.current;
+        const decoded = await audioContext.decodeAudioData(audioBuffer.slice(0));
+        const source = audioContext.createBufferSource();
+        source.buffer = decoded;
+        source.connect(audioContext.destination);
+        source.start(0);
+
+        console.log('[v0] Audio playback started');
+      } catch (err) {
+        console.error('[v0] Speech synthesis error:', err);
+        setError('Failed to generate speech');
+      }
+    },
+    [options]
+  );
+
   // Handle user message
   const handleUserMessage = useCallback(
     async (content: string) => {
@@ -132,6 +190,49 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
       setMessages((prev) => [...prev, userMessage]);
 
       try {
+        // ---- on-device path (spec §8): no network, no cloud fallback ----
+        if (isLocalModelId(options.model)) {
+          const loaded = deviceAi.loadedModelId();
+          if (!loaded) {
+            // Explicit, actionable failure. Deliberately NOT a silent cloud retry.
+            throw new Error(
+              'No local model is loaded — open Local AI, install and load a GGUF model. This prompt was not sent anywhere.',
+            );
+          }
+
+          let streamed = '';
+          const result = await deviceAi.generateText(
+            {
+              modelId: loaded,
+              messages: [
+                { role: 'system', content: 'You are NEXUS, a concise on-device assistant. Answer in two sentences.' },
+                ...messages.slice(-6).map((message) => ({
+                  role: message.role as 'user' | 'assistant',
+                  content: message.content,
+                })),
+                { role: 'user', content },
+              ],
+              maxTokens: 220,
+            },
+            (chunk) => {
+              streamed += chunk;
+            },
+          );
+
+          const text = result.text || streamed;
+          setMessages((prev) => [
+            ...prev,
+            { role: 'assistant', content: text, timestamp: Date.now() },
+          ]);
+          try {
+            await wsClientRef.current.sendVisemeRequest(text);
+          } catch {
+            /* the rig derives lip movement from live audio */
+          }
+          await synthesizeSpeech(text);
+          return;
+        }
+
         // Send to backend for LLM processing
         const response = await fetch('/api/chat', {
           method: 'POST',
@@ -182,64 +283,17 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
           /* no duplex backend — the rig derives lip movement from live audio */
         }
       } catch (err) {
-        console.error('[v0] Error processing message:', err);
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        if (err && typeof err === 'object' && 'code' in err) {
+          const payload = toPayload(err);
+          setError(`${payload.message} — ${payload.fix}`);
+        } else {
+          setError(err instanceof Error ? err.message : 'Unknown error');
+        }
       } finally {
         setIsProcessing(false);
       }
     },
-    [options, messages]
-  );
-
-  // Text-to-speech synthesis
-  const synthesizeSpeech = useCallback(
-    async (text: string) => {
-      try {
-        console.log('[v0] Synthesizing speech for:', text.substring(0, 50));
-
-        const response = await fetch('/api/speech', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text,
-            provider: options.voiceProvider,
-            speed: options.speechSpeed,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Speech synthesis failed');
-        }
-
-        const audioBuffer = await response.arrayBuffer();
-
-        // Best-effort: the duplex socket is optional, playback is not.
-        try {
-          await wsClientRef.current.sendAudio(audioBuffer, 16000);
-        } catch {
-          /* no duplex backend — continue with local playback */
-        }
-
-        // Play audio locally
-        if (!audioContextRef.current) {
-          audioContextRef.current = new (window.AudioContext ||
-            (window as any).webkitAudioContext)();
-        }
-
-        const audioContext = audioContextRef.current;
-        const decoded = await audioContext.decodeAudioData(audioBuffer.slice(0));
-        const source = audioContext.createBufferSource();
-        source.buffer = decoded;
-        source.connect(audioContext.destination);
-        source.start(0);
-
-        console.log('[v0] Audio playback started');
-      } catch (err) {
-        console.error('[v0] Speech synthesis error:', err);
-        setError('Failed to generate speech');
-      }
-    },
-    [options]
+    [options, messages, synthesizeSpeech]
   );
 
   // Send text message directly

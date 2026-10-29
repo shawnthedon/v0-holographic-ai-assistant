@@ -25,6 +25,8 @@ import {
 } from '@/components/hud/readouts';
 import { SettingsPanel } from '@/components/settings-panel';
 import { ModelPicker } from '@/components/hud/model-picker';
+import { LocalAiPanel } from '@/components/hud/local-ai-panel';
+import { useDeviceAi } from '@/hooks/use-device-ai';
 import { FaceCapture } from '@/components/face-capture';
 import { useAiAssistant, type LLMModel, type VoiceProvider } from '@/hooks/use-ai-assistant';
 import { useFullDuplexAudio } from '@/hooks/use-full-duplex-audio';
@@ -46,7 +48,9 @@ export default function Home() {
   const [clock, setClock] = useState('--:--:--');
 
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [localAiOpen, setLocalAiOpen] = useState(false);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
+  const device = useDeviceAi();
   const {
     models: catalogueModels,
     providers: catalogueProviders,
@@ -172,6 +176,8 @@ export default function Home() {
       agentsTotal: agents.length,
       agentsRunning: agents.filter((agent) => agent.status === 'running').length,
       gatewayConfigured: customEndpoint ? 1 : 0,
+      localModels: device.models.filter((model) => model.state === 'installed').length,
+      localLoaded: device.loaded ? 1 : 0,
     });
   }, [agents, customEndpoint, messages.length]);
 
@@ -464,7 +470,23 @@ export default function Home() {
         onSettings={() => setIsSettingsOpen(true)}
         onDeepScan={deepScan}
         onModels={() => setPickerOpen(true)}
-        modelLabel={selectedModel?.label}
+        onLocalAi={() => setLocalAiOpen(true)}
+        localLabel={device.loaded ? 'loaded' : `${device.models.length} installed`}
+        modelLabel={
+          selectedModel?.label ??
+          device.models.find((model) => model.id === selectedModelId)?.name
+        }
+      />
+
+      <LocalAiPanel
+        open={localAiOpen}
+        onClose={() => setLocalAiOpen(false)}
+        device={device}
+        onUseModel={(modelId) => {
+          selectModel(modelId);
+          telemetry.logEvent(`local model · ${modelId}`);
+          setLocalAiOpen(false);
+        }}
       />
 
       <ModelPicker
@@ -481,6 +503,12 @@ export default function Home() {
         discoverError={discoverError}
         discovering={discovering}
         onReload={reloadCatalogue}
+        deviceModels={device.models}
+        loadedLocalId={device.loaded?.modelId ?? null}
+        onOpenLocalAi={() => {
+          setPickerOpen(false);
+          setLocalAiOpen(true);
+        }}
         loading={catalogueLoading}
       />
 
