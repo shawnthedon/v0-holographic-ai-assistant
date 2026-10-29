@@ -183,7 +183,15 @@ npx tsc --noEmit                    # 0 errors
 npx pnpm@10 run build               # 27 routes
 npm run test:browser                # 31 checks — AT-15 … AT-26, scripted engine
 npm run test:browser:live           #  7 checks — real Chromium against a fixture site
+npm run test:ui                     # 15 checks — the built console in a real browser
 ```
+
+`test:ui` drives the shipped UI end to end: it opens the dock, creates and
+renames an artifact, starts a check from the panel, reads the evidence and the
+recovery history, confirms a restricted site is blocked rather than hammered,
+pauses/resumes/cancels a long task, and asserts the console logs no page errors.
+It needs a running build (`npx next start -p 3100`); it starts its own fixture
+site and reuses the app's Chromium bootstrap, so no system Chrome is required.
 
 | Requirement | Scripted suite | Live (real Chromium) |
 |---|---|---|

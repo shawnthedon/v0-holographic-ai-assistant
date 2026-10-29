@@ -145,6 +145,7 @@ stops honestly when it cannot continue.
 ```bash
 npm run test:browser        # 31 checks — AT-15 … AT-26 on a scripted engine
 npm run test:browser:live   #  7 checks — real Chromium, fixture site, SIGKILL recovery
+npm run test:ui             # 15 checks — the built console driven in a real browser
 ```
 
 Design, the stealth limitations we do **not** claim, deployment variables and the full
