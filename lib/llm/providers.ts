@@ -618,7 +618,81 @@ export async function* stream(
   }
 }
 
-/** Ask the provider which models it currently exposes. */
+/**
+ * Ask the provider which models it currently exposes.
+ *
+ * Every provider that paginates is followed to the last page. This matters more
+ * than it looks: Anthropic defaults to 20 models per page, Google to 50, and the
+ * previous implementation read exactly one page — which is why a catalogue with
+ * a live credential still looked like it was missing most of the provider's
+ * models. `has_more` / `nextPageToken` / `next_page_token` are all honoured.
+ */
+
+/** Hard ceiling, so a buggy provider cannot spin the loop forever. */
+const DISCOVERY_MAX_PAGES = 25;
+/** Generous but finite: a provider that has not answered in 20s is unusable. */
+const DISCOVERY_TIMEOUT_MS = 20_000;
+/** Enough for the largest public catalogues (OpenRouter ≈ 500) with headroom. */
+const DISCOVERY_MAX_MODELS = 5_000;
+
+/** Read the model array out of the shapes providers actually return. */
+function extractModelList(payload: unknown): any[] | null {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== 'object') return null;
+  const record = payload as Record<string, any>;
+  const candidate = record.data ?? record.models ?? record.objects ?? record.items;
+  return Array.isArray(candidate) ? candidate : null;
+}
+
+/**
+ * The next page URL for a provider, or null when the list is complete.
+ * Each branch keys off an explicit provider signal — never a guess — so a
+ * provider that does not paginate costs exactly one request.
+ */
+function nextPageUrl(
+  provider: ProviderSpec,
+  payload: Record<string, any> | null,
+  currentUrl: string,
+  pageSize: number,
+): string | null {
+  if (!payload) return null;
+  const url = new URL(currentUrl);
+
+  switch (provider.kind) {
+    case 'anthropic': {
+      if (payload.has_more && payload.last_id) {
+        url.searchParams.set('after_id', String(payload.last_id));
+        url.searchParams.set('limit', String(pageSize));
+        return url.toString();
+      }
+      return null;
+    }
+    case 'google': {
+      if (payload.nextPageToken) {
+        url.searchParams.set('pageToken', String(payload.nextPageToken));
+        return url.toString();
+      }
+      return null;
+    }
+    case 'cohere': {
+      if (payload.next_page_token) {
+        url.searchParams.set('page_token', String(payload.next_page_token));
+        return url.toString();
+      }
+      return null;
+    }
+    default: {
+      // OpenAI-compatible servers that paginate (LiteLLM proxies, some vLLM
+      // builds) advertise `has_more` plus a cursor. Anything else is one page.
+      if (payload.has_more && (payload.last_id || payload.next)) {
+        url.searchParams.set('after', String(payload.last_id ?? payload.next));
+        return url.toString();
+      }
+      return null;
+    }
+  }
+}
+
 export async function discover(
   provider: ProviderSpec,
   baseUrl: string,
@@ -634,20 +708,28 @@ export async function discover(
   }
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  let url: string;
+  let firstUrl: string;
+  // Page size is requested explicitly: Anthropic answers 20 per page by
+  // default, Google 50. Without this the first request alone is incomplete.
+  let pageSize = 1_000;
 
   switch (provider.kind) {
     case 'anthropic':
       if (apiKey) headers['x-api-key'] = apiKey;
       headers['anthropic-version'] = '2023-06-01';
-      url = joinUrl(baseUrl, '/v1/models');
+      firstUrl = `${joinUrl(baseUrl, '/v1/models')}?limit=${pageSize}`;
       break;
-    case 'google':
-      url = `${joinUrl(baseUrl, '/models')}?key=${encodeURIComponent(apiKey)}`;
+    case 'google': {
+      pageSize = 1_000;
+      const url = new URL(joinUrl(baseUrl, '/models'));
+      url.searchParams.set('key', apiKey);
+      url.searchParams.set('pageSize', String(pageSize));
+      firstUrl = url.toString();
       break;
+    }
     case 'cohere':
       if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-      url = joinUrl(baseUrl, '/v1/models');
+      firstUrl = `${joinUrl(baseUrl, '/v1/models')}?page_size=1000`;
       break;
     case 'unsupported':
       throw new LLMError({
@@ -658,49 +740,74 @@ export async function discover(
       });
     default:
       if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-      url = joinUrl(baseUrl, '/models');
+      firstUrl = joinUrl(baseUrl, '/models');
   }
 
-  const response = await request(url, { method: 'GET', headers });
-  if (!response.ok) {
-    const code = classifyStatus(response.status);
-    throw new LLMError({
-      code,
-      message: `${provider.label} model list failed (${response.status}): ${await readErrorBody(response)}`,
-      fix: fixFor(code, provider),
-      provider: provider.id,
-      status: response.status,
+  const collected: DiscoveredModel[] = [];
+  const seen = new Set<string>();
+  let url: string | null = firstUrl;
+
+  for (let page = 0; page < DISCOVERY_MAX_PAGES && url; page += 1) {
+    const response = await request(url, {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
+      cache: 'no-store',
     });
-  }
 
-  const payload = (await response.json().catch(() => null)) as Record<string, any> | null;
-  const list = payload?.data ?? payload?.models ?? [];
-  if (!Array.isArray(list)) {
-    throw new LLMError({
-      code: 'bad-response',
-      message: `${provider.label} returned an unexpected model list`,
-      fix: fixFor('bad-response', provider),
-      provider: provider.id,
-    });
-  }
+    if (!response.ok) {
+      const code = classifyStatus(response.status);
+      throw new LLMError({
+        code,
+        message:
+          page === 0
+            ? `${provider.label} model list failed (${response.status}): ${await readErrorBody(response)}`
+            : `${provider.label} model list failed on page ${page + 1} (${response.status}): ${await readErrorBody(response)}`,
+        fix: fixFor(code, provider),
+        provider: provider.id,
+        status: response.status,
+      });
+    }
 
-  const mapped: Array<DiscoveredModel | null> = list
-    .map((entry: any): DiscoveredModel | null => {
-      const upstreamModel: string =
-        entry?.id ?? entry?.name ?? entry?.model ?? '';
-      if (!upstreamModel) return null;
+    const payload = (await response.json().catch(() => null)) as Record<string, any> | null;
+    const list = extractModelList(payload);
+    if (!list) {
+      throw new LLMError({
+        code: 'bad-response',
+        message: `${provider.label} returned an unexpected model list`,
+        fix: fixFor('bad-response', provider),
+        provider: provider.id,
+      });
+    }
+
+    for (const entry of list) {
+      const upstreamModel: string = String(
+        (entry && (entry.id ?? entry.name ?? entry.model ?? entry.slug)) ?? '',
+      );
+      if (!upstreamModel) continue;
+      // Google returns "models/gemini-2.0-flash"; the id must not double-prefix.
       const cleaned = upstreamModel.replace(/^models\//, '');
-      return {
-        id: `${provider.id}/${cleaned}`,
-        label: entry?.display_name || entry?.name || cleaned,
+      const id = `${provider.id}/${cleaned}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      collected.push({
+        id,
+        label: entry?.display_name || entry?.displayName || entry?.name || cleaned,
         provider: provider.id,
         upstreamModel: cleaned,
-        contextWindow: entry?.context_length ?? entry?.context_window ?? undefined,
-      };
-    })
-    .slice(0, 300);
+        contextWindow:
+          entry?.context_length ?? entry?.context_window ?? entry?.inputTokenLimit ?? undefined,
+      });
+      if (collected.length >= DISCOVERY_MAX_MODELS) break;
+    }
 
-  return mapped.filter((entry): entry is DiscoveredModel => entry !== null);
+    if (collected.length >= DISCOVERY_MAX_MODELS) break;
+    // An empty page has to end the walk even if the provider still claims more,
+    // otherwise a broken cursor costs 25 identical requests.
+    url = list.length === 0 ? null : nextPageUrl(provider, payload, url, pageSize);
+  }
+
+  return collected;
 }
 
 export { joinUrl, classifyStatus, fixFor };

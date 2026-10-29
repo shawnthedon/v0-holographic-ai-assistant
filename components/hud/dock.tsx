@@ -162,7 +162,7 @@ export function CommandDock({
                 item.action();
                 setExpanded(false);
               }}
-              className={`dock-magnet group relative flex h-10 w-10 items-center justify-center rounded-full border backdrop-blur-md transition-colors duration-200 sm:h-11 sm:w-11 ${
+              className={`dock-magnet group relative flex h-10 w-10 items-center justify-center rounded-full border transition-colors duration-200 sm:h-11 sm:w-11 ${
                 item.active
                   ? 'border-[color:var(--hud-lime)]/70 bg-[color:var(--hud-lime)]/15 text-[color:var(--hud-lime)]'
                   : 'border-[color:var(--hud-line-strong)] bg-[#041014]/80 text-[color:var(--hud-ink)]/80 hover:border-[color:var(--hud-ink)]/70 hover:text-[color:var(--hud-ink)]'
@@ -183,7 +183,7 @@ export function CommandDock({
         </div>
 
         {/* dock rail */}
-        <div className="relative flex items-center gap-1 rounded-full border border-[color:var(--hud-line-strong)] bg-[#030c10]/85 px-2 py-2 shadow-[0_0_40px_rgba(0,200,255,0.12)] backdrop-blur-xl">
+        <div className="relative flex items-center gap-1 rounded-full border border-[color:var(--hud-line-strong)] bg-[#030c10]/95 px-2 py-2 shadow-[0_0_40px_rgba(0,200,255,0.12)]">
           <button
             type="button"
             onClick={() => setExpanded((value) => !value)}

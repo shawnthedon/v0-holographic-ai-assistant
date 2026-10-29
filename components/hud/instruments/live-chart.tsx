@@ -49,7 +49,8 @@ export function LiveChart({
       const parent = canvas.parentElement;
       if (!parent) return;
       const rect = parent.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // 2x on a small canvas triples raster cost for no visible gain.
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       width = rect.width;
       height = rect.height;
       canvas.width = Math.max(1, Math.round(width * dpr));
@@ -61,8 +62,13 @@ export function LiveChart({
     if (canvas.parentElement) observer.observe(canvas.parentElement);
     resize();
 
-    const draw = () => {
+    let lastDraw = 0;
+    const draw = (now = 0) => {
       raf = requestAnimationFrame(draw);
+      // Telemetry publishes at 5 Hz. Repainting every frame redrew identical
+      // pixels ~12x more often than the data changed.
+      if (now - lastDraw < 80) return;
+      lastDraw = now;
       if (!width || !height) return;
 
       const data = telemetry.history[series];

@@ -88,8 +88,10 @@ function sculptHead(geometry: THREE.BufferGeometry) {
     { at: [-0.34, 0.06, 0.6], radius: 0.24, amount: 0.05, dir: [-0.3, 0, 1] },
     // philtrum + lips
     { at: [0, -0.19, 0.82], radius: 0.15, amount: 0.045, dir: [0, 0, 1] },
-    // chin
+    // chin + jaw corners (a bare ellipsoid reads as an egg, not a face)
     { at: [0, -0.44, 0.62], radius: 0.2, amount: 0.06, dir: [0, 0.2, 1] },
+    { at: [0.3, -0.34, 0.42], radius: 0.24, amount: 0.075, dir: [0.75, -0.15, 0.6] },
+    { at: [-0.3, -0.34, 0.42], radius: 0.24, amount: 0.075, dir: [-0.75, -0.15, 0.6] },
     // temples (pulled in)
     { at: [0.55, 0.32, 0.35], radius: 0.24, amount: -0.035, dir: [1, 0, 0] },
     { at: [-0.55, 0.32, 0.35], radius: 0.24, amount: -0.035, dir: [-1, 0, 0] },
@@ -100,13 +102,13 @@ function sculptHead(geometry: THREE.BufferGeometry) {
     normal.copy(vertex).normalize();
 
     // ellipsoid base: slightly narrower across, taller than deep
-    vertex.x *= 0.74;
-    vertex.y *= 0.98;
-    vertex.z *= 0.82;
+    vertex.x *= 0.8;
+    vertex.y *= 0.9;
+    vertex.z *= 0.84;
 
     // jaw taper below the cheek line
     const below = Math.max(0, -vertex.y);
-    const taper = 1 - 0.42 * Math.pow(Math.min(1, below / 0.9), 1.7);
+    const taper = 1 - 0.22 * Math.pow(Math.min(1, below / 0.9), 1.8);
     vertex.x *= taper;
     vertex.z *= 1 - 0.1 * Math.pow(Math.min(1, below / 0.9), 1.7);
 
@@ -204,7 +206,9 @@ export function createAvatarRig({ canvas, onReady, onError }: AvatarRigOptions) 
     antialias: true,
     powerPreference: 'high-performance',
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // 2x DPR with MSAA on a live canvas is the most expensive thing on the page.
+  // 1.5 still looks sharp on a hologram that is deliberately soft-edged.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.setClearColor(0x000000, 0);
 
   const scene = new THREE.Scene();
@@ -221,12 +225,17 @@ export function createAvatarRig({ canvas, onReady, onError }: AvatarRigOptions) 
   const headPivot = new THREE.Group();
   scene.add(headPivot);
 
-  const headGeometry = new THREE.SphereGeometry(1, 96, 96);
+  // 64x64 (≈8k quads) reads identical at this projection scale and cuts the
+  // vertex bill by more than half versus 96x96.
+  const headGeometry = new THREE.SphereGeometry(1, 64, 64);
   sculptHead(headGeometry);
 
   const headMaterial = hologramMaterial(uniforms);
   const head = new THREE.Mesh(headGeometry, headMaterial);
-  head.scale.setScalar(0.49);
+  // Slightly narrower than tall — a uniform sphere reads as a mannequin. This
+  // is set before the surface probe below, so eyes/brows/mouth are raycast onto
+  // the *scaled* face and stay seated on it.
+  head.scale.set(0.465, 0.475, 0.475);
   headPivot.add(head);
 
   const wireframe = new THREE.Mesh(
@@ -239,7 +248,7 @@ export function createAvatarRig({ canvas, onReady, onError }: AvatarRigOptions) 
       depthWrite: false,
     }),
   );
-  wireframe.scale.setScalar(0.49 * 1.002);
+  wireframe.scale.set(0.465 * 1.004, 0.475 * 1.004, 0.475 * 1.004);
   headPivot.add(wireframe);
 
   /* ---------------- face surface probe ----------------
@@ -300,10 +309,14 @@ export function createAvatarRig({ canvas, onReady, onError }: AvatarRigOptions) 
     depthWrite: false,
   });
 
-  const eyeRadius = 0.062;
+  // Proportion pass: the previous 0.062 globe with a 0.028 iris left a wide
+  // ring of white around a small disc, which reads as googly rather than human.
+  // A smaller globe, squashed vertically into an almond, with a larger iris is
+  // what makes the face legible.
+  const eyeRadius = 0.052;
 
-  const EYE_X = 0.125;
-  const EYE_Y = 0.092;
+  const EYE_X = 0.113;
+  const EYE_Y = 0.074;
 
   const buildEye = (side: -1 | 1): Eye => {
     const root = new THREE.Group();
@@ -311,15 +324,19 @@ export function createAvatarRig({ canvas, onReady, onError }: AvatarRigOptions) 
     root.position.set(side * EYE_X, EYE_Y, faceSurfaceZ(side * EYE_X, EYE_Y, 0.345) - 0.05);
 
     const ball = new THREE.Mesh(new THREE.SphereGeometry(eyeRadius, 32, 32), eyeWhite);
+    // squash the globe into an almond opening instead of a full sphere
+    ball.scale.set(1, 0.82, 1);
     root.add(ball);
 
     const iris = new THREE.Group();
-    iris.position.z = eyeRadius * 0.93;
+    // Sit the iris ON the globe surface, not inside it: at 0.93r the disc was
+    // buried under the translucent sclera and read as a tiny pinprick pupil.
+    iris.position.z = eyeRadius * 1.02;
 
-    const irisDisc = new THREE.Mesh(new THREE.CircleGeometry(0.028, 32), irisMaterial);
+    const irisDisc = new THREE.Mesh(new THREE.CircleGeometry(0.031, 32), irisMaterial);
     iris.add(irisDisc);
 
-    const pupil = new THREE.Mesh(new THREE.CircleGeometry(0.0115, 24), pupilMaterial);
+    const pupil = new THREE.Mesh(new THREE.CircleGeometry(0.0135, 24), pupilMaterial);
     pupil.position.z = 0.0015;
     iris.add(pupil);
 
@@ -337,7 +354,7 @@ export function createAvatarRig({ canvas, onReady, onError }: AvatarRigOptions) 
       new THREE.SphereGeometry(eyeRadius * 1.07, 32, 18, 0, Math.PI * 2, 0, Math.PI * 0.55),
       lidMaterial,
     );
-    lid.rotation.x = -0.62;
+    lid.rotation.x = -0.52;
     root.add(lid);
 
     // lower lid: the complementary bottom cap, swinging up on a blink
@@ -364,7 +381,7 @@ export function createAvatarRig({ canvas, onReady, onError }: AvatarRigOptions) 
   const browMaterial = new THREE.MeshBasicMaterial({
     color: new THREE.Color('#9ff8ff'),
     transparent: true,
-    opacity: 0.5,
+    opacity: 0.72,
     depthWrite: false,
   });
 
@@ -376,7 +393,7 @@ export function createAvatarRig({ canvas, onReady, onError }: AvatarRigOptions) 
       browPoint(side * 0.112, 0.172),
       browPoint(side * 0.166, 0.158),
     ]);
-    const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 16, 0.0085, 6, false), browMaterial);
+    const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 16, 0.011, 6, false), browMaterial);
     headPivot.add(mesh);
     return mesh;
   };
@@ -386,7 +403,7 @@ export function createAvatarRig({ canvas, onReady, onError }: AvatarRigOptions) 
 
   /* ---------------- mouth ---------------- */
   const mouthGroup = new THREE.Group();
-  mouthGroup.position.set(0, -0.168, faceSurfaceZ(0, -0.168, 0.355) + 0.004);
+  mouthGroup.position.set(0, -0.156, faceSurfaceZ(0, -0.156, 0.355) + 0.012);
   headPivot.add(mouthGroup);
 
   const cavityMaterial = new THREE.MeshBasicMaterial({
@@ -395,27 +412,29 @@ export function createAvatarRig({ canvas, onReady, onError }: AvatarRigOptions) 
     opacity: 0.92,
     depthWrite: false,
   });
+  // Wider and flatter: a round cavity with a taller axis reads as a surprised
+  // "o" rather than a resting mouth.
   const cavity = new THREE.Mesh(new THREE.CircleGeometry(0.05, 32), cavityMaterial);
-  cavity.scale.set(1.5, 0.85, 1);
+  cavity.scale.set(1.9, 0.62, 1);
   cavity.position.z = -0.004;
   mouthGroup.add(cavity);
 
   const lipMaterial = new THREE.MeshBasicMaterial({
-    color: new THREE.Color('#7ff0ff'),
+    color: new THREE.Color('#a6f7ff'),
     transparent: true,
-    opacity: 0.62,
+    opacity: 0.8,
     depthWrite: false,
   });
 
   const upperLip = new THREE.Mesh(new THREE.TorusGeometry(0.052, 0.0085, 8, 28, Math.PI), lipMaterial);
   upperLip.rotation.z = Math.PI;
-  upperLip.scale.set(1.35, 0.62, 1);
+  upperLip.scale.set(1.85, 0.5, 1);
   upperLip.position.set(0, 0.014, 0.002);
   mouthGroup.add(upperLip);
 
   const lowerLip = new THREE.Mesh(new THREE.TorusGeometry(0.052, 0.0095, 8, 28, Math.PI), lipMaterial);
   lowerLip.rotation.z = 0;
-  lowerLip.scale.set(1.32, 0.7, 1);
+  lowerLip.scale.set(1.8, 0.56, 1);
   lowerLip.position.set(0, -0.008, 0.002);
   mouthGroup.add(lowerLip);
 
@@ -723,6 +742,12 @@ export function createAvatarRig({ canvas, onReady, onError }: AvatarRigOptions) 
   const loop = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    // rAF is throttled in background tabs, but a hidden/offscreen host can
+    // still be scheduled by some engines — skip the draw entirely.
+    if (typeof document !== 'undefined' && document.hidden) {
+      raf = requestAnimationFrame(loop);
+      return;
+    }
     try {
       update(dt);
     } catch (error) {

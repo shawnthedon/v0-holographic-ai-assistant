@@ -22,6 +22,25 @@ interface AssistantMessage {
   timestamp: number;
 }
 
+/**
+ * The transcript is capped. An unbounded message array means an unbounded
+ * render tree and an unbounded request body — the two things that turn a long
+ * conversation into a slow tab and, eventually, a killed one.
+ */
+const MAX_TRANSCRIPT = 60;
+/** Turns sent upstream. The server caps at 24 as well. */
+const MAX_CONTEXT_TURNS = 12;
+/** A reply that never arrives must not leave the console stuck on "thinking". */
+const CHAT_TIMEOUT_MS = 120_000;
+
+function appendMessage(
+  current: AssistantMessage[],
+  message: AssistantMessage,
+): AssistantMessage[] {
+  const next = [...current, message];
+  return next.length > MAX_TRANSCRIPT ? next.slice(-MAX_TRANSCRIPT) : next;
+}
+
 /** A model id of the form `local/…` runs on this device, never in the cloud. */
 export function isLocalModelId(modelId: string): boolean {
   return modelId.startsWith('local/');
@@ -138,7 +157,13 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
         });
 
         if (!response.ok) {
-          throw new Error('Speech synthesis failed');
+          throw new Error(`Speech synthesis unavailable (${response.status})`);
+        }
+        // A JSON/HTML error body must never reach decodeAudioData: that throws a
+        // DOMException which some engines surface as an unhandled rejection.
+        const contentType = response.headers.get('content-type') ?? '';
+        if (!contentType.startsWith('audio/')) {
+          throw new Error(`Speech endpoint returned ${contentType || 'no content type'}`);
         }
 
         const audioBuffer = await response.arrayBuffer();
@@ -187,7 +212,7 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
         content,
         timestamp: Date.now(),
       };
-      setMessages((prev) => [...prev, userMessage]);
+      setMessages((prev) => appendMessage(prev, userMessage));
 
       try {
         // ---- on-device path (spec §8): no network, no cloud fallback ----
@@ -220,10 +245,9 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
           );
 
           const text = result.text || streamed;
-          setMessages((prev) => [
-            ...prev,
-            { role: 'assistant', content: text, timestamp: Date.now() },
-          ]);
+          setMessages((prev) =>
+            appendMessage(prev, { role: 'assistant', content: text, timestamp: Date.now() }),
+          );
           try {
             await wsClientRef.current.sendVisemeRequest(text);
           } catch {
@@ -234,16 +258,28 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
         }
 
         // Send to backend for LLM processing
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: content,
-            model: options.model,
-            endpoint: options.customEndpoint,
-            messages: messages,
-          }),
-        });
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+        let response: Response;
+        try {
+          response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+              message: content,
+              model: options.model,
+              endpoint: options.customEndpoint,
+              // Only the recent context, with roles the provider accepts.
+              messages: messages.slice(-MAX_CONTEXT_TURNS).map((message) => ({
+                role: message.role,
+                content: message.content,
+              })),
+            }),
+          });
+        } finally {
+          window.clearTimeout(timeout);
+        }
 
         if (!response.ok) {
           // the route returns { error, code, fix } for every LLM failure
@@ -271,7 +307,7 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
           content: assistantResponse,
           timestamp: Date.now(),
         };
-        setMessages((prev) => [...prev, assistantMessage]);
+        setMessages((prev) => appendMessage(prev, assistantMessage));
 
         // Generate speech
         await synthesizeSpeech(assistantResponse);

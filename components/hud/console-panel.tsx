@@ -35,21 +35,30 @@ export function ConsolePanel({
   useEffect(() => {
     const panel = panelRef.current;
     if (!panel) return;
+    // `will-change` is set while the panel moves and dropped afterwards so the
+    // compositor does not keep an extra layer alive for the whole session.
+    panel.style.willChange = 'opacity, transform';
     if (reduced) {
       panel.style.opacity = open ? '1' : '0';
       panel.style.transform = open ? 'none' : 'translateX(28px)';
       panel.style.pointerEvents = open ? 'auto' : 'none';
       return;
     }
+    // opacity + transform only. Animating `filter: blur()` on the transcript
+    // forced a full re-raster of the panel on every frame, and the browser had
+    // to hold a blurred copy of the live canvas underneath it.
     animate(panel, {
       opacity: open ? 1 : 0,
       translateX: open ? 0 : 28,
       scale: open ? 1 : 0.985,
-      filter: open ? 'blur(0px)' : 'blur(6px)',
-      duration: open ? 480 : 260,
+      duration: open ? 420 : 220,
       ease: open ? EASE.out : 'inOutQuad',
     });
     panel.style.pointerEvents = open ? 'auto' : 'none';
+    const release = window.setTimeout(() => {
+      panel.style.willChange = 'auto';
+    }, 500);
+    return () => window.clearTimeout(release);
   }, [open, reduced]);
 
   useEffect(() => {

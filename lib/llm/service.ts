@@ -188,6 +188,115 @@ export function providers(): ProviderStatus[] {
   return providerStatuses();
 }
 
+/* ------------------------------------------------------------------ */
+/*  bulk discovery                                                     */
+/* ------------------------------------------------------------------ */
+
+export interface DiscoveryFailure {
+  provider: ProviderId;
+  label: string;
+  code: string;
+  message: string;
+  fix: string;
+  configured: boolean;
+}
+
+export interface DiscoveryResult {
+  models: DiscoveredModel[];
+  failures: DiscoveryFailure[];
+  /** Per-provider totals, so the picker can say "137 live" not just list them. */
+  counts: Record<string, number>;
+  fetchedAt: string;
+  cached: boolean;
+}
+
+/**
+ * Per-process cache. Discovery costs one HTTP round trip (or several, for a
+ * paginated provider) per provider, so the overlay must not trigger it on every
+ * render. Five minutes is short enough that a newly deployed model shows up.
+ */
+const DISCOVERY_TTL_MS = 5 * 60_000;
+const discoveryCache = new Map<string, { at: number; value: DiscoveryResult }>();
+
+function cacheKey(ids: ProviderId[] | null): string {
+  return ids ? [...ids].sort().join(',') : '*';
+}
+
+/**
+ * Ask every provider what it serves, in parallel, and report per-provider
+ * failures instead of one opaque error. A deployment with three keys and one
+ * expired token still gets two full model lists plus the reason for the third.
+ */
+export async function discoverAll(options: {
+  providerIds?: ProviderId[];
+  refresh?: boolean;
+} = {}): Promise<DiscoveryResult> {
+  const ids = options.providerIds?.length ? options.providerIds : null;
+  const key = cacheKey(ids);
+  const cached = discoveryCache.get(key);
+  if (!options.refresh && cached && Date.now() - cached.at < DISCOVERY_TTL_MS) {
+    return { ...cached.value, cached: true };
+  }
+
+  const targets = providers().filter(
+    (entry) => entry.supportsModelList && (!ids || ids.includes(entry.provider)),
+  );
+
+  const settled = await Promise.allSettled(
+    targets.map(async (entry) => ({
+      entry,
+      models: await discoverProvider(entry.provider),
+    })),
+  );
+
+  const models: DiscoveredModel[] = [];
+  const failures: DiscoveryFailure[] = [];
+  const counts: Record<string, number> = {};
+  const seen = new Set<string>();
+
+  settled.forEach((result, index) => {
+    const entry = targets[index];
+    if (result.status === 'fulfilled') {
+      counts[entry.provider] = result.value.models.length;
+      for (const model of result.value.models) {
+        if (seen.has(model.id)) continue;
+        seen.add(model.id);
+        models.push(model);
+      }
+      return;
+    }
+    const error = result.reason;
+    const llmError =
+      error instanceof LLMError
+        ? error
+        : new LLMError({
+            code: 'provider-error',
+            message: error instanceof Error ? error.message : 'discovery failed',
+            fix: `Check the ${entry.label} credential and base URL, then retry.`,
+            provider: entry.provider,
+          });
+    counts[entry.provider] = 0;
+    failures.push({
+      provider: entry.provider,
+      label: entry.label,
+      code: llmError.code,
+      message: llmError.message,
+      fix: llmError.fix,
+      configured: entry.configured,
+    });
+  });
+
+  const value: DiscoveryResult = {
+    models,
+    failures,
+    counts,
+    fetchedAt: new Date().toISOString(),
+    cached: false,
+  };
+  discoveryCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
 export async function discoverProvider(providerId: ProviderId): Promise<DiscoveredModel[]> {
   const provider = getProvider(providerId);
   const credential = resolveCredential(providerId);

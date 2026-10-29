@@ -211,9 +211,15 @@ button {
   /* ---------------- materials ---------------- */
 
   .hud-panel {
-    background: linear-gradient(180deg, rgba(6, 30, 38, 0.72) 0%, rgba(2, 10, 13, 0.58) 100%);
+    /*
+     * No backdrop-filter here. A 10px backdrop blur over a continuously
+     * animating WebGL canvas has to be recomposited every frame — it was the
+     * most expensive effect on the page, and on Safari/iOS it is a known
+     * renderer-crash trigger. The gradient below is opaque enough that the
+     * blur contributed almost nothing visually.
+     */
+    background: linear-gradient(180deg, rgba(6, 30, 38, 0.9) 0%, rgba(2, 10, 13, 0.86) 100%);
     border: 1px solid var(--hud-line);
-    backdrop-filter: blur(10px);
     box-shadow:
       inset 0 1px 0 rgba(140, 245, 255, 0.06),
       0 0 34px rgba(0, 180, 220, 0.05);
@@ -254,10 +260,9 @@ button {
   }
 
   .hud-chip {
-    background: rgba(2, 10, 13, 0.72);
+    background: rgba(2, 10, 13, 0.82);
     border: 1px solid rgba(125, 242, 255, 0.16);
     padding: 3px 6px;
-    backdrop-filter: blur(2px);
     box-shadow: 0 0 18px rgba(0, 160, 200, 0.12);
   }
 

@@ -166,21 +166,42 @@ export function HologramStage({
     root.addEventListener('pointerleave', onLeave);
 
     let elapsed = 0;
+    let lastX = Number.NaN;
+    let lastY = Number.NaN;
+    /** Track the last written CSS-var pair so idle frames cost no style recalc. */
+    let lastPx = Number.NaN;
+    let lastPy = Number.NaN;
+
     const timer = createTimer({
       duration: 1000,
       loop: true,
+      // 60 fps of DOM writes for a slow drifting parallax is wasted work on the
+      // main thread and forces a style recalc of the whole projection subtree.
+      frameRate: 30,
       onUpdate: () => {
-        elapsed += 16;
-        state.x += (state.tx - state.x) * 0.055;
-        state.y += (state.ty - state.y) * 0.055;
+        if (document.hidden) return;
+        elapsed += 33;
+        state.x += (state.tx - state.x) * 0.1;
+        state.y += (state.ty - state.y) * 0.1;
         const driftX = Math.sin(elapsed / 2600) * 0.18;
         const driftY = Math.cos(elapsed / 3100) * 0.14;
-        rig.style.transform = `perspective(1200px) rotateY(${(state.x + driftX) * 7}deg) rotateX(${
-          -(state.y + driftY) * 5.5
-        }deg) translateZ(0)`;
-        if (subjectRef.current) {
-          subjectRef.current.style.setProperty('--px', `${-(state.x + driftX) * 10}px`);
-          subjectRef.current.style.setProperty('--py', `${-(state.y + driftY) * 8}px`);
+        const rotY = (state.x + driftX) * 7;
+        const rotX = -(state.y + driftY) * 5.5;
+
+        // Only touch the DOM when the value actually moved.
+        if (Math.abs(rotY - lastX) > 0.01 || Math.abs(rotX - lastY) > 0.01) {
+          lastX = rotY;
+          lastY = rotX;
+          rig.style.transform = `perspective(1200px) rotateY(${rotY}deg) rotateX(${rotX}deg) translateZ(0)`;
+        }
+
+        const px = -(state.x + driftX) * 10;
+        const py = -(state.y + driftY) * 8;
+        if (subjectRef.current && (Math.abs(px - lastPx) > 0.5 || Math.abs(py - lastPy) > 0.5)) {
+          lastPx = px;
+          lastPy = py;
+          subjectRef.current.style.setProperty('--px', `${px}px`);
+          subjectRef.current.style.setProperty('--py', `${py}px`);
         }
       },
     });

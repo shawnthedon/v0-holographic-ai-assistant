@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { animate } from 'animejs';
 import { Check, Cpu, Radio, RefreshCw, Search, ShieldCheck, TriangleAlert, X } from 'lucide-react';
 import { EASE, useReducedMotion } from '@/lib/hud/motion';
-import type { CatalogueModel } from '@/hooks/use-model-catalogue';
+import type { CatalogueModel, DiscoveryFailure, DiscoveryMeta } from '@/hooks/use-model-catalogue';
 import type { ProviderId, ProviderStatus } from '@/lib/llm/types';
 import type { LocalModel } from '@/lib/device-ai/types';
 import { formatBytes } from '@/lib/device-ai/catalogue';
@@ -20,7 +20,11 @@ interface ModelPickerProps {
   onSelect: (modelId: string) => void;
   onDiscover: (provider: ProviderId) => Promise<unknown>;
   discoverError: string | null;
-  discovering: ProviderId | null;
+  discovering: ProviderId | 'all' | null;
+  /** Providers that could not list their models, with the reason and the fix. */
+  discoverFailures?: DiscoveryFailure[];
+  discovery?: DiscoveryMeta | null;
+  onRefreshDiscovery?: () => Promise<void> | void;
   onReload?: () => void;
   /** Installed on-device models — selectable exactly like cloud models. */
   deviceModels?: LocalModel[];
@@ -68,6 +72,9 @@ export function ModelPicker({
   onDiscover,
   discoverError,
   discovering,
+  discoverFailures = [],
+  discovery = null,
+  onRefreshDiscovery,
   onReload,
   deviceModels = [],
   loadedLocalId = null,
@@ -137,13 +144,9 @@ export function ModelPicker({
       duration: 320,
       ease: EASE.out,
     });
-    animate(panelRef.current.querySelectorAll('.model-row'), {
-      opacity: [0, 1],
-      translateX: [-8, 0],
-      delay: (_el: unknown, index = 0) => 30 + index * 12,
-      duration: 340,
-      ease: EASE.out,
-    });
+    // Rows are NOT animated individually. With live discovery a provider can
+    // contribute hundreds of rows; one animation per row cost more than the
+    // overlay is worth and made opening the picker feel like a stall.
   }, [open, reduced]);
 
   const providerById = useMemo(
@@ -167,6 +170,77 @@ export function ModelPicker({
         return a.provider.localeCompare(b.provider) || a.label.localeCompare(b.label);
       });
   }, [models, query, role, selectedModelId]);
+
+  /**
+   * Grouped by provider, because the question an operator actually asks is
+   * "what does my OpenRouter key reach?" — not "here are 900 rows".
+   */
+  const groups = useMemo(() => {
+    const byProvider = new Map<ProviderId, CatalogueModel[]>();
+    for (const entry of filtered) {
+      const bucket = byProvider.get(entry.provider);
+      if (bucket) bucket.push(entry);
+      else byProvider.set(entry.provider, [entry]);
+    }
+
+    const failureFor = new Map(discoverFailures.map((failure) => [failure.provider, failure]));
+    return [...byProvider.entries()]
+      .map(([provider, entries]) => {
+        const status = providerById.get(provider);
+        const failure = failureFor.get(provider);
+        const live = entries.filter((entry) => entry.source === 'provider').length;
+        return {
+          provider,
+          label: status?.label ?? provider,
+          entries,
+          live,
+          curated: entries.length - live,
+          configured: status?.configured ?? false,
+          blocked: status?.kind === 'unsupported',
+          supportsModelList: status?.supportsModelList ?? false,
+          failure: failure && !failure.configured ? failure : undefined,
+        };
+      })
+      .sort((a, b) => {
+        const aHasSelected = a.entries.some((entry) => entry.id === selectedModelId) ? 0 : 1;
+        const bHasSelected = b.entries.some((entry) => entry.id === selectedModelId) ? 0 : 1;
+        if (aHasSelected !== bHasSelected) return aHasSelected - bHasSelected;
+        if (a.configured !== b.configured) return a.configured ? -1 : 1;
+        if (a.entries.length !== b.entries.length) return b.entries.length - a.entries.length;
+        return a.label.localeCompare(b.label);
+      });
+  }, [discoverFailures, filtered, providerById, selectedModelId]);
+
+  /**
+   * Render cap. Every row is a real DOM subtree; with discovery on, a single
+   * OpenRouter key can return 500 models. The rest stay one click away instead
+   * of making the overlay paint ~5,000 nodes.
+   */
+  const [rowBudget, setRowBudget] = useState(60);
+  useEffect(() => {
+    setRowBudget(60);
+  }, [query, role, open]);
+
+  const totalFiltered = filtered.length;
+  /**
+   * Budget is split *per provider*, not consumed front-to-back. Draining one
+   * provider's 137 live models before showing the next provider's catalogue is
+   * exactly how a list "looks incomplete" even when every model was fetched.
+   */
+  const perGroupCap = useMemo(() => {
+    if (rowBudget >= totalFiltered) return Number.POSITIVE_INFINITY;
+    return Math.max(4, Math.ceil(rowBudget / Math.max(1, groups.length)));
+  }, [groups.length, rowBudget, totalFiltered]);
+
+  const rendered = useMemo(
+    () =>
+      groups.map((group) => ({
+        ...group,
+        entries: group.entries.slice(0, perGroupCap),
+        hidden: Math.max(0, group.entries.length - perGroupCap),
+      })),
+    [groups, perGroupCap],
+  );
 
   if (!open) return null;
 
@@ -309,115 +383,176 @@ export function ModelPicker({
               );
             })}
 
-          {filtered.map((entry) => {
-            const provider = providerById.get(entry.provider);
-            const isSelected = entry.id === selectedModelId;
-            const probe = sweep?.results.get(entry.id);
-            const blocked = provider?.kind === 'unsupported' || !entry.configured;
-            return (
-              <button
-                key={entry.id}
-                type="button"
-                onClick={() => {
-                  onSelect(entry.id);
-                  onClose();
-                }}
-                className={`model-row group flex w-full items-start gap-3 rounded px-2.5 py-2 text-left transition ${
-                  isSelected ? 'bg-[color:var(--hud-mint)]/10' : 'hover:bg-white/[0.03]'
-                }`}
-              >
-                <span
-                  className={`mt-[3px] flex h-4 w-4 flex-none items-center justify-center rounded-full border ${
-                    isSelected
-                      ? 'border-[color:var(--hud-lime)] text-[color:var(--hud-lime)]'
-                      : 'border-[color:var(--hud-line-strong)] text-transparent'
-                  }`}
-                >
-                  <Check size={10} />
+          {rendered.map((group) => (
+            <section key={group.provider} className="mb-1">
+              <header className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2.5 pb-1 pt-2 font-mono text-[7px] uppercase tracking-[0.24em]">
+                <span className="text-[color:var(--hud-ink)]">{group.label}</span>
+                <span className="h-px flex-1 bg-[color:var(--hud-line)]" />
+                <span className="text-[color:var(--hud-ink-dim)]">
+                  {group.entries.length} shown
                 </span>
-
-                <span className="min-w-0 flex-1">
-                  <span className="flex flex-wrap items-baseline gap-x-2">
-                    <span
-                      className={`font-mono text-[11px] tracking-[0.08em] ${
-                        blocked ? 'text-[color:var(--hud-ink-dim)]' : 'text-[color:var(--hud-ink)]'
-                      }`}
-                    >
-                      {entry.label}
-                    </span>
-                    <span className="font-mono text-[7px] uppercase tracking-[0.2em] text-[color:var(--hud-ink-dim)]">
-                      {provider?.label ?? entry.provider}
-                    </span>
-                    {entry.verified && (
-                      <span className="flex items-center gap-1 font-mono text-[7px] uppercase tracking-[0.18em] text-[color:var(--hud-lime)]">
-                        <ShieldCheck size={9} /> verified
-                      </span>
-                    )}
-                    {entry.source === 'provider' && (
-                      <span className="flex items-center gap-1 font-mono text-[7px] uppercase tracking-[0.18em] text-[color:var(--hud-mint)]">
-                        <Radio size={9} /> live
-                      </span>
-                    )}
-                    {probe?.reachable === false && probe.code && (
-                      <span className="font-mono text-[7px] uppercase tracking-[0.18em] text-[#ff9d7a]">
-                        {probe.code}
-                      </span>
-                    )}
-                  </span>
-
-                  <span className="mt-[2px] flex flex-wrap items-center gap-x-2 gap-y-[2px] font-mono text-[7px] uppercase tracking-[0.16em] text-[color:var(--hud-ink-dim)]">
-                    <span className="flex items-center gap-1">
-                      <Cpu size={9} /> {entry.execution}
-                    </span>
-                    <span>{entry.roles.join(' · ')}</span>
-                    {entry.contextWindow ? <span>{(entry.contextWindow / 1000).toFixed(0)}k ctx</span> : null}
-                    {provider?.kind === 'unsupported' ? (
-                      <span className="text-[#ff9d7a]">blocked</span>
-                    ) : entry.configured ? (
-                      <span className="text-[color:var(--hud-mint)]">ready</span>
-                    ) : (
-                      <span className="text-[#ffd27a]">no key</span>
-                    )}
-                  </span>
-
-                  {entry.notes && (
-                    <span className="mt-1 block font-mono text-[7.5px] normal-case leading-[1.55] tracking-[0.06em] text-[color:var(--hud-ink-dim)]">
-                      {entry.notes}
-                    </span>
-                  )}
-                </span>
-
-                {provider?.supportsModelList && entry.configured && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void onDiscover(entry.provider);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.stopPropagation();
-                        void onDiscover(entry.provider);
-                      }
-                    }}
-                    className="flex flex-none items-center gap-1 rounded border border-[color:var(--hud-line)] px-1.5 py-[3px] font-mono text-[7px] uppercase tracking-[0.16em] text-[color:var(--hud-ink-dim)] transition hover:border-[color:var(--hud-lime)] hover:text-[color:var(--hud-lime)]"
-                  >
-                    <RefreshCw size={8} className={discovering === entry.provider ? 'animate-spin' : ''} />
-                    list
+                {group.live > 0 && (
+                  <span className="flex items-center gap-1 text-[color:var(--hud-mint)]">
+                    <Radio size={8} /> {group.live} live
                   </span>
                 )}
-              </button>
-            );
-          })}
+                {group.curated > 0 && group.live > 0 && (
+                  <span className="text-[color:var(--hud-ink-dim)]">{group.curated} curated</span>
+                )}
+                {group.failure ? (
+                  <span
+                    className="max-w-[46%] truncate text-[#ffd27a] normal-case tracking-[0.1em]"
+                    title={`${group.failure.message} — ${group.failure.fix}`}
+                  >
+                    {group.failure.code === 'no-credential'
+                      ? 'no key — curated list only'
+                      : `${group.failure.code} — ${group.failure.message}`}
+                  </span>
+                ) : group.configured ? (
+                  <span className="text-[color:var(--hud-mint)]">keyed</span>
+                ) : (
+                  <span className="text-[#ffd27a]">no key</span>
+                )}
+                {group.supportsModelList && onDiscover && (
+                  <button
+                    type="button"
+                    onClick={() => void onDiscover(group.provider)}
+                    className="flex items-center gap-1 rounded border border-[color:var(--hud-line)] px-1.5 py-[2px] text-[color:var(--hud-ink-dim)] transition hover:border-[color:var(--hud-lime)] hover:text-[color:var(--hud-lime)]"
+                  >
+                    <RefreshCw
+                      size={8}
+                      className={discovering === group.provider ? 'animate-spin' : ''}
+                    />
+                    refresh
+                  </button>
+                )}
+              </header>
+
+              {group.entries.map((entry) => {
+                const provider = providerById.get(entry.provider);
+                const isSelected = entry.id === selectedModelId;
+                const probe = sweep?.results.get(entry.id);
+                const blocked = provider?.kind === 'unsupported' || !entry.configured;
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => {
+                      onSelect(entry.id);
+                      onClose();
+                    }}
+                    className={`model-row group flex w-full items-start gap-3 rounded px-2.5 py-2 text-left transition ${
+                      isSelected ? 'bg-[color:var(--hud-mint)]/10' : 'hover:bg-white/[0.03]'
+                    }`}
+                  >
+                    <span
+                      className={`mt-[3px] flex h-4 w-4 flex-none items-center justify-center rounded-full border ${
+                        isSelected
+                          ? 'border-[color:var(--hud-lime)] text-[color:var(--hud-lime)]'
+                          : 'border-[color:var(--hud-line-strong)] text-transparent'
+                      }`}
+                    >
+                      <Check size={10} />
+                    </span>
+
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-baseline gap-x-2">
+                        <span
+                          className={`font-mono text-[11px] tracking-[0.08em] ${
+                            blocked ? 'text-[color:var(--hud-ink-dim)]' : 'text-[color:var(--hud-ink)]'
+                          }`}
+                        >
+                          {entry.label}
+                        </span>
+                        {entry.verified && (
+                          <span className="flex items-center gap-1 font-mono text-[7px] uppercase tracking-[0.18em] text-[color:var(--hud-lime)]">
+                            <ShieldCheck size={9} /> verified
+                          </span>
+                        )}
+                        {probe?.reachable === false && probe.code && (
+                          <span className="font-mono text-[7px] uppercase tracking-[0.18em] text-[#ff9d7a]">
+                            {probe.code}
+                          </span>
+                        )}
+                      </span>
+
+                      <span className="mt-[2px] flex flex-wrap items-center gap-x-2 gap-y-[2px] font-mono text-[7px] uppercase tracking-[0.16em] text-[color:var(--hud-ink-dim)]">
+                        <span className="flex items-center gap-1">
+                          <Cpu size={9} /> {entry.execution}
+                        </span>
+                        <span>{entry.roles.join(' · ')}</span>
+                        {entry.contextWindow ? (
+                          <span>{(entry.contextWindow / 1000).toFixed(0)}k ctx</span>
+                        ) : null}
+                        {provider?.kind === 'unsupported' ? (
+                          <span className="text-[#ff9d7a]">blocked</span>
+                        ) : entry.configured ? (
+                          <span className="text-[color:var(--hud-mint)]">ready</span>
+                        ) : (
+                          <span className="text-[#ffd27a]">no key</span>
+                        )}
+                      </span>
+
+                      {entry.notes && (
+                        <span className="mt-1 block font-mono text-[7.5px] normal-case leading-[1.55] tracking-[0.06em] text-[color:var(--hud-ink-dim)]">
+                          {entry.notes}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+
+              {group.hidden > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setRowBudget(totalFiltered)}
+                  className="ml-8 mb-1 rounded px-1.5 py-[3px] font-mono text-[7px] uppercase tracking-[0.18em] text-[color:var(--hud-ink-dim)] transition hover:text-[color:var(--hud-lime)]"
+                >
+                  + {group.hidden} more from {group.label}
+                </button>
+              )}
+            </section>
+          ))}
+
+          {rowBudget < totalFiltered && (
+            <button
+              type="button"
+              onClick={() => setRowBudget(totalFiltered)}
+              className="mx-2 mb-2 w-[calc(100%-1rem)] rounded border border-[color:var(--hud-line)] py-2 font-mono text-[7px] uppercase tracking-[0.24em] text-[color:var(--hud-ink-dim)] transition hover:border-[color:var(--hud-lime)] hover:text-[color:var(--hud-lime)]"
+            >
+              show all {totalFiltered} models (every provider expanded)
+            </button>
+          )}
+
         </div>
 
         <footer className="flex items-center justify-between gap-2 border-t border-[color:var(--hud-line)] px-4 py-2 font-mono text-[7px] uppercase tracking-[0.2em] text-[color:var(--hud-ink-dim)]">
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span>
               {filtered.length} model{filtered.length === 1 ? '' : 's'} ·{' '}
+              {models.filter((entry) => entry.source === 'provider').length} live ·{' '}
               {providers.filter((entry) => entry.configured).length}/{providers.length} providers keyed
             </span>
+            {discovery && (
+              <span className="text-[color:var(--hud-ink-dim)]">
+                listed {new Date(discovery.fetchedAt).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+                {discovery.cached ? ' · cached' : ''}
+              </span>
+            )}
+            {onRefreshDiscovery && (
+              <button
+                type="button"
+                onClick={() => void onRefreshDiscovery()}
+                disabled={discovering === 'all'}
+                className="rounded border border-[color:var(--hud-line)] px-2 py-[3px] font-mono text-[7px] uppercase tracking-[0.2em] text-[color:var(--hud-ink-dim)] transition hover:border-[color:var(--hud-lime)] hover:text-[color:var(--hud-lime)] disabled:opacity-50"
+              >
+                {discovering === 'all' ? 'listing providers…' : 'refresh lists'}
+              </button>
+            )}
             {sweep && (
               <span className="text-[color:var(--hud-ink)]">
                 sweep · {sweep.summary.passed} pass / {sweep.summary.failed} fail /{' '}

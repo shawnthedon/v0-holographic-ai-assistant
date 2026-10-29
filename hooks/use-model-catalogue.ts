@@ -9,12 +9,29 @@ export interface CatalogueModel extends ModelSpec {
   source?: 'catalogue' | 'provider';
 }
 
+export interface DiscoveryFailure {
+  provider: ProviderId;
+  label: string;
+  code: string;
+  message: string;
+  fix: string;
+  configured: boolean;
+}
+
+export interface DiscoveryMeta {
+  fetchedAt: string;
+  cached: boolean;
+  counts: Record<string, number>;
+}
+
 interface CatalogueResponse {
   defaultModelId: string;
   models: CatalogueModel[];
   providers: ProviderStatus[];
   discovered?: DiscoveredModel[];
   discoverError?: { code: string; message: string; fix: string };
+  discoverFailures?: DiscoveryFailure[];
+  discovery?: DiscoveryMeta;
 }
 
 const STORAGE_KEY = 'nexus.llm.model';
@@ -37,13 +54,27 @@ export function useModelCatalogue() {
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [discovered, setDiscovered] = useState<DiscoveredModel[]>([]);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
-  const [discovering, setDiscovering] = useState<ProviderId | null>(null);
+  const [discovering, setDiscovering] = useState<ProviderId | 'all' | null>(null);
+  const [discoverFailures, setDiscoverFailures] = useState<DiscoveryFailure[]>([]);
+  const [discovery, setDiscovery] = useState<DiscoveryMeta | null>(null);
 
-  const load = useCallback(async () => {
+  /**
+   * `discover=all` rides along with the catalogue request: every provider that
+   * holds a credential is asked what it serves, in one server-side fan-out, so
+   * the picker opens with the providers' real lists instead of only the 30
+   * curated entries. Providers without a credential cost nothing — they fail
+   * immediately server-side and are reported per provider.
+   */
+  const load = useCallback(async (refreshDiscovery = false) => {
     try {
-      const response = await fetch('/api/models', { cache: 'no-store' });
+      const query = refreshDiscovery ? '?discover=all&refresh=1' : '?discover=all';
+      const response = await fetch(`/api/models${query}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(`Catalogue request failed (${response.status})`);
       const data = (await response.json()) as CatalogueResponse;
+      setDiscovered(data.discovered ?? []);
+      setDiscoverFailures(data.discoverFailures ?? []);
+      setDiscovery(data.discovery ?? null);
+      if (data.discoverError) setDiscoverError(data.discoverError.message);
       setState({
         loading: false,
         error: null,
@@ -92,7 +123,12 @@ export function useModelCatalogue() {
         setDiscovered([]);
         return [];
       }
-      setDiscovered(data.discovered ?? []);
+      // A single-provider refresh must not discard the other providers' lists.
+      setDiscovered((current) => {
+        const others = current.filter((entry) => entry.provider !== provider);
+        return [...others, ...(data.discovered ?? [])];
+      });
+      if (data.discovery) setDiscovery(data.discovery);
       return data.discovered ?? [];
     } catch (error) {
       setDiscoverError(error instanceof Error ? error.message : 'Discovery failed');
@@ -138,6 +174,17 @@ export function useModelCatalogue() {
     [fusedModels, selectedModelId],
   );
 
+  /** Re-ask every provider, bypassing the server's 5-minute cache. */
+  const refreshDiscovery = useCallback(async () => {
+    setDiscovering('all');
+    setDiscoverError(null);
+    try {
+      await load(true);
+    } finally {
+      setDiscovering(null);
+    }
+  }, [load]);
+
   return {
     ...state,
     models: fusedModels,
@@ -146,9 +193,12 @@ export function useModelCatalogue() {
     select,
     reload: load,
     discover,
+    refreshDiscovery,
     discovered,
     discovering,
     discoverError,
+    discoverFailures,
+    discovery,
     configuredProviders,
   };
 }
