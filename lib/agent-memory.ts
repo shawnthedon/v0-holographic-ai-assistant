@@ -20,7 +20,7 @@ export interface MemoryContext {
 
 class MemoryManager {
   private memories: Map<string, MemoryContext> = new Map();
-  private cleanupInterval: NodeJS.Timeout | null = null;
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.startCleanupTask();

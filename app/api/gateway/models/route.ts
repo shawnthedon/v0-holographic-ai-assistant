@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { discoverProvider } from '@/lib/llm/service';
+import { catalogue } from '@/lib/llm/service';
+import type { ProviderId } from '@/lib/llm/types';
 
 /**
  * GET /api/gateway/models?provider=openrouter
@@ -7,22 +10,32 @@ import { NextRequest, NextResponse } from 'next/server';
  * In production, this should fetch from each provider's API
  */
 export async function GET(request: NextRequest) {
-  try {
-    const provider = request.nextUrl.searchParams.get('provider') || 'openrouter';
+  const provider = (request.nextUrl.searchParams.get('provider') || 'openrouter') as ProviderId;
 
-    const models = getModelsForProvider(provider);
+  try {
+    // ask the provider first; it is the only source of truth for what the
+    // credential can actually reach
+    const discovered = await discoverProvider(provider);
+    return NextResponse.json({ provider, models: discovered, count: discovered.length, source: 'provider' });
+  } catch (error) {
+    // fall back to the curated catalogue, and say so instead of pretending
+    const fallback = catalogue()
+      .filter((entry) => entry.provider === provider)
+      .map((entry) => ({
+        id: entry.id,
+        name: entry.label,
+        contextLength: entry.contextWindow,
+        source: 'catalogue',
+      }));
 
     return NextResponse.json({
       provider,
-      models,
-      count: models.length,
+      models: fallback,
+      count: fallback.length,
+      source: 'catalogue',
+      error: error instanceof Error ? error.message : 'Provider discovery failed',
+      fix: 'Set the provider API key to list live models, or pick from the curated catalogue.',
     });
-  } catch (error) {
-    console.error('[v0] Models discovery error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch models' },
-      { status: 500 }
-    );
   }
 }
 

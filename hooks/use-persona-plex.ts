@@ -78,7 +78,13 @@ export function usePersonaPlex(config: PersonaPlexConfig = {}) {
         if (audioData instanceof ArrayBuffer) {
           buffer = audioData;
         } else if (audioData instanceof Int16Array || audioData instanceof Float32Array) {
-          buffer = audioData.buffer;
+          // copy into a plain ArrayBuffer — the typed array may be backed by a
+          // SharedArrayBuffer, which TalkingHead cannot consume directly
+          buffer = new Uint8Array(
+            audioData.buffer,
+            audioData.byteOffset,
+            audioData.byteLength,
+          ).slice().buffer;
         } else {
           throw new Error('Invalid audio data format');
         }

@@ -17,11 +17,12 @@ const PROVIDERS: Array<{ id: GatewayProviderType; label: string; description: st
   { id: 'openrouter', label: 'OpenRouter', description: '500+ models aggregated' },
   { id: 'huggingface', label: 'Hugging Face', description: 'Open source models' },
   { id: 'bedrock', label: 'AWS Bedrock', description: 'Enterprise AWS integration' },
-  { id: 'litelm', label: 'LiteLLM', description: 'Unified proxy gateway' },
+  { id: 'litellm', label: 'LiteLLM', description: 'Unified proxy gateway' },
   { id: 'ollama', label: 'Ollama', description: 'Local models' },
   { id: 'openai', label: 'OpenAI', description: 'OpenAI API' },
   { id: 'anthropic', label: 'Anthropic', description: 'Claude models' },
   { id: 'cohere', label: 'Cohere', description: 'Cohere API' },
+  { id: 'custom', label: 'Custom', description: 'Any OpenAI-compatible endpoint' },
 ];
 
 const PROVIDER_INFO: Record<
@@ -29,13 +30,14 @@ const PROVIDER_INFO: Record<
   { defaultBaseUrl?: string; requiresAuth: boolean; supportedModels: number }
 > = {
   openrouter: { defaultBaseUrl: 'https://openrouter.ai/api/v1', requiresAuth: true, supportedModels: 500 },
-  huggingface: { defaultBaseUrl: 'https://api-inference.huggingface.co/v1', requiresAuth: true, supportedModels: 150 },
+  huggingface: { defaultBaseUrl: 'https://router.huggingface.co/v1', requiresAuth: true, supportedModels: 150 },
   bedrock: { defaultBaseUrl: 'https://bedrock-runtime.us-east-1.amazonaws.com', requiresAuth: true, supportedModels: 20 },
-  litelm: { defaultBaseUrl: 'http://0.0.0.0:4000', requiresAuth: false, supportedModels: 0 },
-  ollama: { defaultBaseUrl: 'http://localhost:11434/v1', requiresAuth: false, supportedModels: 0 },
+  litellm: { defaultBaseUrl: 'http://127.0.0.1:4000/v1', requiresAuth: false, supportedModels: 0 },
+  ollama: { defaultBaseUrl: 'http://127.0.0.1:11434/v1', requiresAuth: false, supportedModels: 0 },
   openai: { defaultBaseUrl: 'https://api.openai.com/v1', requiresAuth: true, supportedModels: 10 },
   anthropic: { defaultBaseUrl: 'https://api.anthropic.com', requiresAuth: true, supportedModels: 5 },
-  cohere: { defaultBaseUrl: 'https://api.cohere.com/v1', requiresAuth: true, supportedModels: 3 },
+  cohere: { defaultBaseUrl: 'https://api.cohere.com', requiresAuth: true, supportedModels: 3 },
+  custom: { defaultBaseUrl: '', requiresAuth: false, supportedModels: 0 },
 };
 
 export function GatewayConfig({ onConfigChange }: GatewayConfigProps) {

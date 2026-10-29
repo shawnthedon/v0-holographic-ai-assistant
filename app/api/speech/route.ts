@@ -13,10 +13,21 @@ export async function POST(request: NextRequest) {
 
     console.log('[v0] Speech API called with provider:', provider);
 
-    if (!text) {
+    if (!text || !text.trim()) {
       return NextResponse.json(
-        { error: 'Text is required' },
+        { error: 'Text is required', code: 'bad-request', fix: 'Send { text, provider, speed }.' },
         { status: 400 }
+      );
+    }
+
+    if (text.length > 4000) {
+      return NextResponse.json(
+        {
+          error: 'Text exceeds the 4000 character limit for a single synthesis call',
+          code: 'bad-request',
+          fix: 'Split the text into sentence chunks and synthesise them in order.',
+        },
+        { status: 413 }
       );
     }
 
@@ -36,10 +47,19 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[v0] Speech API error:', error);
+    const message = error instanceof Error ? error.message : 'Failed to synthesize speech';
+    console.error('[v0] Speech API error:', message);
+
+    const missingKey = message.includes('not configured');
     return NextResponse.json(
-      { error: 'Failed to synthesize speech' },
-      { status: 500 }
+      {
+        error: message,
+        code: missingKey ? 'no-credential' : 'tts-error',
+        fix: missingKey
+          ? 'Set GOOGLE_API_KEY (Neural2) and/or ELEVENLABS_API_KEY in the deployment environment.'
+          : 'Inspect the provider response; the TTS vendor may be rate limiting or rejecting the voice id.',
+      },
+      { status: missingKey ? 503 : 502 }
     );
   }
 }

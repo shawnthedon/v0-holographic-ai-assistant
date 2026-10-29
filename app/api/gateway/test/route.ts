@@ -12,9 +12,26 @@ export async function POST(request: NextRequest) {
 
     const { provider, model, baseUrl, apiKey, timeout } = body;
 
-    if (!provider || !model || !apiKey) {
+    if (!provider || !model) {
       return NextResponse.json(
-        { error: 'Missing required fields: provider, model, apiKey' },
+        {
+          error: 'Missing required fields: provider, model',
+          code: 'bad-request',
+          fix: 'Send { provider, model } and either an apiKey or rely on the provider environment variable.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Local runtimes are keyless — do not reject them for a missing apiKey.
+    const keyless = ['ollama', 'litellm', 'vllm', 'custom'].includes(provider);
+    if (!apiKey && !keyless) {
+      return NextResponse.json(
+        {
+          error: `No API key supplied for ${provider}`,
+          code: 'no-credential',
+          fix: 'Provide an apiKey in the request or set the provider key as an environment variable.',
+        },
         { status: 400 }
       );
     }

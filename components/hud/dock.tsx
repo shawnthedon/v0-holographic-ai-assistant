@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  BrainCircuit,
   Camera,
+  Sparkles,
   MessageSquare,
   Mic,
   MicOff,
   ScanFace,
   Settings,
-  Sparkles,
 } from 'lucide-react';
 import { animate, type JSAnimation } from 'animejs';
 import { EASE, useReducedMotion } from '@/lib/hud/motion';
@@ -21,6 +22,8 @@ interface DockProps {
   onFaceToggle: () => void;
   onSettings: () => void;
   onDeepScan: () => void;
+  onModels?: () => void;
+  modelLabel?: string;
   chatOpen?: boolean;
 }
 
@@ -36,6 +39,8 @@ export function CommandDock({
   onFaceToggle,
   onSettings,
   onDeepScan,
+  onModels,
+  modelLabel,
   chatOpen = false,
 }: DockProps) {
   const dockRef = useRef<HTMLDivElement>(null);
@@ -135,6 +140,9 @@ export function CommandDock({
         >
           {[
             { icon: Sparkles, label: 'Deep scan', action: onDeepScan, active: false },
+            ...(onModels
+              ? [{ icon: BrainCircuit, label: modelLabel ? `Models · ${modelLabel}` : 'Models', action: onModels, active: false }]
+              : []),
             { icon: Camera, label: 'Biometric capture', action: onFaceToggle, active: false },
             { icon: MessageSquare, label: 'Transcript', action: onChatToggle, active: chatOpen },
             { icon: Settings, label: 'Settings', action: onSettings, active: false },

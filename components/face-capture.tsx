@@ -43,7 +43,7 @@ export function FaceCapture({ onCaptureSent, open, onOpenChange, hideTrigger }: 
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [frameCount, setFrameCount] = useState(0);
   const [confidence, setConfidence] = useState(0);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
 
   /**
    * Request camera access and start video stream

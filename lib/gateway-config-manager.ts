@@ -39,21 +39,45 @@ export interface GatewayConfigResponse {
  * GatewayConfigManager
  * Manages encrypted storage and retrieval of gateway configurations
  */
+/**
+ * In-process store for per-user gateway configs.
+ *
+ * Previous releases wrote these blobs into `process.env`, which leaked one
+ * user's encrypted config into every request handled by the same instance and
+ * left secrets in the environment dump. A module-scoped Map is scoped to the
+ * instance and disappears with it — acceptable for a single-operator console,
+ * and the report calls out that durable storage is still required for
+ * multi-user deployments.
+ */
+const configStore = new Map<string, string>();
+
 export class GatewayConfigManager {
   private masterKey: string;
 
   constructor() {
-    const masterKey = process.env.GATEWAY_ENCRYPTION_KEY;
-    if (!masterKey || masterKey.length < 16) {
-      throw new Error('GATEWAY_ENCRYPTION_KEY environment variable not set or too short (min 16 chars)');
+    // Do not throw here: a missing key must degrade to a clear, actionable
+    // error at save time instead of breaking every route that imports this.
+    this.masterKey = process.env.GATEWAY_ENCRYPTION_KEY || '';
+  }
+
+  get isEncryptionReady() {
+    return this.masterKey.length >= 16;
+  }
+
+  private assertEncryptionReady() {
+    if (!this.isEncryptionReady) {
+      throw new Error(
+        'GATEWAY_ENCRYPTION_KEY is not set (min 16 chars) — cannot store user API keys. ' +
+          'Set it in the deployment environment, or rely on provider environment variables instead.',
+      );
     }
-    this.masterKey = masterKey;
   }
 
   /**
    * Save gateway configuration with encrypted API key
    */
   async saveConfig(userId: string, config: GatewayConfigData, apiKey: string): Promise<GatewayConfigResponse> {
+    this.assertEncryptionReady();
     if (!apiKey) {
       throw new Error('API key is required');
     }
@@ -69,9 +93,7 @@ export class GatewayConfigManager {
       lastUpdated: now,
     };
 
-    // Store in environment/session for now
-    // In production, this would store in database with userId key
-    process.env[`GATEWAY_CONFIG_${userId}`] = JSON.stringify(stored);
+    configStore.set(userId, JSON.stringify(stored));
 
     return this.configToResponse(stored);
   }
@@ -80,10 +102,11 @@ export class GatewayConfigManager {
    * Load gateway configuration with decrypted API key
    */
   async loadConfig(userId: string): Promise<GatewayConfig | null> {
-    const stored = process.env[`GATEWAY_CONFIG_${userId}`];
+    const stored = configStore.get(userId);
     if (!stored) {
       return null;
     }
+    this.assertEncryptionReady();
 
     try {
       const parsedConfig: StoredGatewayConfig = JSON.parse(stored);
@@ -105,7 +128,7 @@ export class GatewayConfigManager {
    * Get configuration without API key (for frontend display)
    */
   async getConfigSafe(userId: string): Promise<GatewayConfigResponse | null> {
-    const stored = process.env[`GATEWAY_CONFIG_${userId}`];
+    const stored = configStore.get(userId);
     if (!stored) {
       return null;
     }
@@ -122,7 +145,7 @@ export class GatewayConfigManager {
    * Delete gateway configuration
    */
   async deleteConfig(userId: string): Promise<void> {
-    delete process.env[`GATEWAY_CONFIG_${userId}`];
+    configStore.delete(userId);
   }
 
   /**
@@ -174,20 +197,20 @@ export class GatewayConfigManager {
     return {
       openrouter: {
         provider: 'openrouter',
-        model: 'meta-llama/llama-2-70b-chat',
+        model: 'qwen/qwen-2.5-72b-instruct',
         temperature: 0.7,
         maxTokens: 2000,
       },
       huggingface: {
         provider: 'huggingface',
-        model: 'meta-llama/Llama-2-70b-chat-hf',
+        model: 'Qwen/Qwen2.5-72B-Instruct',
         temperature: 0.7,
         maxTokens: 2000,
       },
-      litelm: {
-        provider: 'litelm',
-        model: 'gpt-3.5-turbo',
-        baseUrl: 'http://localhost:4000',
+      litellm: {
+        provider: 'litellm',
+        model: 'gpt-4o-mini',
+        baseUrl: 'http://127.0.0.1:4000/v1',
         temperature: 0.7,
         maxTokens: 2000,
       },
@@ -199,20 +222,20 @@ export class GatewayConfigManager {
       },
       ollama: {
         provider: 'ollama',
-        model: 'llama2',
-        baseUrl: 'http://localhost:11434/v1',
+        model: 'llama3.2:3b',
+        baseUrl: 'http://127.0.0.1:11434/v1',
         temperature: 0.7,
         maxTokens: 2000,
       },
       openai: {
         provider: 'openai',
-        model: 'gpt-4-turbo',
+        model: 'gpt-4o-mini',
         temperature: 0.7,
         maxTokens: 2000,
       },
       anthropic: {
         provider: 'anthropic',
-        model: 'claude-3-sonnet-20240229',
+        model: 'claude-sonnet-4-5',
         temperature: 0.7,
         maxTokens: 2000,
       },

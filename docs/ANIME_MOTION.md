@@ -64,13 +64,13 @@ Two non-negotiable rules:
 | Scan header | `hud/chrome.tsx` | mode label blur-in, progress segments stagger, `Metric` counters |
 | Hologram rig | `hud/hologram-stage.tsx` | 4 counter-rotating orbit loops, scan sweep `alternate`, beam strands stagger, spark field, `createTimer` parallax rig |
 | Deep scan | `hud/hologram-stage.tsx` | click → burst ring scale/opacity + 24 radial ticks staggered from centre |
-| Speaking | `hud/hologram-stage.tsx` | interval-driven chromatic `steps(3)` glitch on subject slices |
-| Waveform | `instruments/waveform.tsx` | `createTimer` single RAF loop; amplitude eased by `animate` |
-| Spectrum bars | `instruments/bar-matrix.tsx` | `stagger` from `center`, `alternate` loop, `scaleY` only |
-| Sparklines | `instruments/sparkline.tsx` | `svg.createDrawable` stroke reveal + pulsing head marker |
-| Radial gauge | `instruments/arc-gauge.tsx` | `strokeDashoffset` sweep + numeric counter in one pass |
-| Radar cluster | `instruments/ring-cluster.tsx` | orbit loops, randomised blips, `stagger(from:'random')` |
-| Neural log | `hud/neural-log.tsx` | interval rows, each entering with `translateX` + `scale` |
+| Speaking | `hud/hologram-stage.tsx` | interval-driven chromatic `steps(4)` glitch on the projection |
+| Waveform | `instruments/live-waveform.tsx` | single RAF canvas loop reading the live analyser; no React state |
+| Spectrum bars | `instruments/spectrum-bars.tsx` | RAF canvas loop over the live FFT with decaying peak-hold |
+| Sparklines | `instruments/live-chart.tsx` | RAF canvas loop over a telemetry history series |
+| Radial gauge | `instruments/arc-gauge.tsx` | `strokeDashoffset` eased from the shown value + numeric counter |
+| Radar cluster | `instruments/ring-cluster.tsx` | orbit loops, `stagger(from:'random')`, `stretch()` on state change |
+| Insight log | `hud/insight-log.tsx` | newest row enters with `translateX` + `opacity` |
 | Command dock | `hud/dock.tsx` | magnetic hover (`outExpo`), spring release, click ripple ring |
 | Transcript | `hud/console-panel.tsx` | panel slide/scale/blur, message entry |
 | Backdrop | `hud/backdrop.tsx` | vertical grid drift, bloom breathing |
@@ -88,3 +88,35 @@ Two non-negotiable rules:
   animated; no layout properties.
 - Loops are paused in effect cleanup, and `stretch()` (never a restart) is used
   to change loop speed at runtime.
+
+
+---
+
+## 9. Live data × motion
+
+Instruments no longer animate canned demo numbers. `lib/hud/telemetry.ts`
+publishes a measured snapshot at 5 Hz; HUD components subscribe with
+`useMetric(key)` (`hooks/use-hud-telemetry.ts`, backed by
+`useSyncExternalStore`) and animate *from the value they are already showing*,
+never from zero:
+
+```ts
+animate(arc, { strokeDashoffset: target, duration: 900, ease: EASE.glide });
+```
+
+Drawing surfaces that need per-frame data (sparklines, spectrum, oscilloscope)
+run a single `requestAnimationFrame` loop of their own and read the store
+directly — no React state, no re-render, and the loop is skipped entirely under
+`prefers-reduced-motion` (one static draw instead).
+
+Rules that keep it coherent:
+
+1. **One owner per property.** anime.js owns transforms/opacity on HUD chrome;
+   canvas code owns canvas pixels; three.js owns the avatar. Nothing
+   cross-writes another system's properties.
+2. **Retime, never restart.** Live loops use `animation.stretch(factor)` so a
+   state change reads as acceleration instead of a phase jump.
+3. **Motion encodes data.** Sweep speed follows the microphone envelope, ring
+   rotations follow listening state, counters ease toward the measured value.
+4. **Fallbacks are static.** Reduced motion, no WebGL, or a lost context falls
+   back to a still frame rather than a half-animated one.

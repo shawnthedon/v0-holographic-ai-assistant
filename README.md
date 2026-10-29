@@ -23,13 +23,86 @@ the scan sweep hotter, switches the accent from cyan to lime and drives every
 meter/oscilloscope. Clicking the subject fires a deep scan burst.
 
 **Motion** — every animation is [anime.js v4](https://animejs.com) driven:
-`createTimeline` for the cold-boot sequence, `stagger` for entrances, SVG
-drawables for the sparklines, motion-free single-timer RAF loops for the
-oscilloscopes, and `animation.stretch()` to retime live orbits without losing
-their phase. Full breakdown: [`docs/ANIME_MOTION.md`](docs/ANIME_MOTION.md).
+`createTimeline` for the cold-boot sequence, `stagger` for entrances, and
+`animation.stretch()` to retime live orbits without losing their phase. Canvas
+instruments run their own single RAF loop and read the telemetry store
+directly, so 5 Hz data never re-renders the page. Full breakdown: [`docs/ANIME_MOTION.md`](docs/ANIME_MOTION.md).
 
 `prefers-reduced-motion` is honoured everywhere — instruments snap to their
 final state and nothing loops.
+
+## Live instrumentation
+
+Every readout on the console is measured, not invented. `lib/hud/telemetry.ts`
+is a single external store that samples the running application and publishes at
+5 Hz; components subscribe to one metric each through `useMetric()` so a value
+change never re-renders the page.
+
+| Readout | Source |
+| --- | --- |
+| render engine (fps, frame, worst frame, jank) | `requestAnimationFrame` timing + `PerformanceObserver` long tasks |
+| runtime (heap, limit, DOM nodes) | `performance.memory`, `document.querySelectorAll('*')` |
+| api uplink (latency, rtt, downlink, failures) | real `fetch('/api/health')` probe every 9s + `navigator.connection` |
+| input channel (level, peak, dB, sample rate) | `AnalyserNode` on the real microphone stream |
+| spectrum bars | `getByteFrequencyData` from that same analyser (falls back to frame-time history when the mic is closed) |
+| microphone trace | live `getByteTimeDomainData` oscilloscope |
+| insight log | health transitions, long tasks, channel open/close, duplex socket, operator actions |
+| session counters | eased odometers over inputs / messages / scans / agents |
+
+## Models — pick any inference core
+
+The console is not tied to one vendor. `lib/llm/` holds a provider-agnostic
+adapter layer: **OpenAI-compatible** (OpenRouter, OpenAI, Groq, Mistral, DeepSeek,
+Together, Hugging Face, Ollama, vLLM, LiteLLM, any custom endpoint), **Anthropic**
+(`/v1/messages` + `x-api-key`), **Google Gemini** (`:generateContent`) and
+**Cohere** (`/v2/chat`). AWS Bedrock is declared unsupported and refuses locally
+instead of being sent a request it cannot understand.
+
+Open the model catalogue from the dock (`modes` → model) or Settings → Models.
+Every entry shows where inference runs (`cloud` / `self-hosted` / `on-device`),
+its roles, context window, whether this deployment holds a credential, and a
+`verified` badge once that model has actually answered. **`list`** asks a
+provider what it really serves and merges the result into the list (`live`), so
+a newly released model is selectable without a code change. **`verify all`** runs
+the system-wide sweep in the browser and tags each model `pass`, `fail` + error
+code, or `blocked`.
+
+The selection is a model id sent per request (`POST /api/chat { model }`) and
+resolved server-side — the browser never holds a provider credential. With no
+model named the server uses `DEFAULT_LLM_MODEL`, else the last model that
+answered, else the first provider that has a key.
+
+| what | where |
+|---|---|
+| provider registry + adapters | `lib/llm/providers.ts` |
+| curated catalogue | `lib/llm/catalogue.ts` |
+| credentials (env → user override → none) | `lib/llm/credentials.ts` |
+| resolution, chat, streaming, sweep | `lib/llm/service.ts` |
+| routes | `/api/models`, `/api/chat`, `/api/llm/verify` |
+| CLI sweep | `node scripts/verify-llm.mjs --base <url> --probe` |
+
+Every failure is a machine-readable contract — `{ error, code, fix }`:
+`no-credential` (503), `unknown-model` (404), `auth-failed` (401),
+`rate-limited` (429), `unsupported-provider` (501), `provider-error` (502). The
+full audit, the issues found and the remediation for each are in
+[`docs/LLM_VERIFICATION.md`](docs/LLM_VERIFICATION.md).
+
+## The avatar
+
+`lib/hud/avatar-face.ts` drives a three.js face rig rendered into the projector
+lens: a procedurally sculpted skull (13 gaussian bumps for brow ridge, sockets,
+nose, cheekbones, philtrum, chin, temples), eyeballs with iris/pupil/glare,
+swinging lid shells, tube brows and a torus mouth. Facial features are placed by
+raycasting onto the finished skull, so they always sit on the surface.
+
+Behaviour is spring-damped and state driven — saccades with overshoot, blink
+state machine (double blinks, saccade coupling, suppressed while thinking),
+vestibulo-ocular lead, pupil dilation from cognitive load, breathing, and a jaw
+driven by the live microphone envelope so the lips move with speech. Assistant
+state maps straight through: `idle → listening → thinking → speaking`.
+
+WebGL unavailable, a lost context, or a throwing render loop degrades to the
+still portrait, so the stage never blanks.
 
 ## Overview
 

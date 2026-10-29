@@ -9,7 +9,11 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const files = formData.getAll('files') as File[];
+    // Route handlers in Node expose undici's FormData; read it structurally.
+    const rawFiles = formData.getAll('files') as unknown[];
+    const files = rawFiles.filter(
+      (entry): entry is File => typeof entry === 'object' && entry !== null && entry instanceof File,
+    ) as File[];
 
     if (!files || files.length === 0) {
       return NextResponse.json(

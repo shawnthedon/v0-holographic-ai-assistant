@@ -18,11 +18,18 @@ export async function POST(request: NextRequest) {
       // 3. Generate response audio with PersonaPlex
       // 4. Stream response back via WebSocket or return binary audio
 
-      return NextResponse.json({
-        success: true,
-        message: 'Audio processed',
-        visemes: ['neutral', 'A', 'E', 'I', 'O', 'U'],
-      });
+      // No PersonaPlex runtime is wired into this deployment: say so instead
+      // of returning fabricated visemes as if audio had been processed.
+      return NextResponse.json(
+        {
+          success: false,
+          mock: true,
+          message:
+            'PersonaPlex audio processing is not implemented. Configure NEXT_PUBLIC_BACKEND_URL and a duplex runtime to enable it.',
+          visemes: [],
+        },
+        { status: 501, headers: { 'X-Mock': 'true' } }
+      );
     }
 
     // Handle persona setup (voice and role prompt)
@@ -34,10 +41,15 @@ export async function POST(request: NextRequest) {
         console.log('[v0] Voice prompt file received');
       }
 
-      return NextResponse.json({
-        success: true,
-        message: 'Persona initialized',
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          mock: true,
+          message:
+            'Persona setup is not persisted: no PersonaPlex runtime is configured for this deployment.',
+        },
+        { status: 501, headers: { 'X-Mock': 'true' } }
+      );
     }
 
     return NextResponse.json(

@@ -3,7 +3,8 @@
 import { useCallback, useRef, useState } from 'react';
 import { getWebSocketClient } from '@/lib/websocket-client';
 
-export type LLMModel = 'gemini-2.0-flash' | 'gpt-4o' | 'custom';
+/** Any model id from GET /api/models, e.g. 'openrouter/qwen-2.5-72b-instruct'. */
+export type LLMModel = string;
 export type VoiceProvider = 'google' | 'elevenlabs';
 
 interface UseAiAssistantOptions {
@@ -33,8 +34,22 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
   const initializeSpeechRecognition = useCallback(() => {
     if (recognitionRef.current) return;
 
-    const SpeechRecognition =
-      window.webkitSpeechRecognition || (window as any).SpeechRecognition;
+    type SpeechRecognitionCtor = new () => {
+      continuous: boolean;
+      interimResults: boolean;
+      lang: string;
+      onstart: (() => void) | null;
+      onresult: ((event: unknown) => void) | null;
+      onerror: ((event: unknown) => void) | null;
+      onend: (() => void) | null;
+      start: () => void;
+      stop: () => void;
+    };
+    const speechWindow = window as unknown as {
+      webkitSpeechRecognition?: SpeechRecognitionCtor;
+      SpeechRecognition?: SpeechRecognitionCtor;
+    };
+    const SpeechRecognition = speechWindow.webkitSpeechRecognition || speechWindow.SpeechRecognition;
     if (!SpeechRecognition) {
       setError('Speech Recognition not supported');
       return;
@@ -77,15 +92,15 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
     recognitionRef.current = recognition;
   }, []);
 
-  // Toggle microphone input
+  // Toggle microphone input. The duplex socket is optional: browser speech
+  // recognition works without it, so a missing backend degrades to text-only
+  // replies instead of blocking the microphone entirely.
   const toggleMicrophone = useCallback(async () => {
     if (!wsClientRef.current.isConnected()) {
       try {
         await wsClientRef.current.connect();
       } catch (err) {
-        console.error('[v0] WebSocket connection failed:', err);
-        setError('Failed to connect to server');
-        return;
+        console.warn('[v0] Duplex socket unavailable — continuing with browser recognition only', err);
       }
     }
 
@@ -130,10 +145,21 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
         });
 
         if (!response.ok) {
-          throw new Error(`API error: ${response.statusText}`);
+          // the route returns { error, code, fix } for every LLM failure
+          const failure = (await response.json().catch(() => null)) as
+            | { error?: string; code?: string; fix?: string }
+            | null;
+          const detail = failure?.error || response.statusText || `HTTP ${response.status}`;
+          setError(failure?.fix ? `${detail} — ${failure.fix}` : detail);
+          throw new Error(detail);
         }
 
-        const data = await response.json();
+        const data = (await response.json()) as {
+          response: string;
+          model?: string;
+          provider?: string;
+          execution?: string;
+        };
         const assistantResponse = data.response;
 
         console.log('[v0] LLM response:', assistantResponse);
@@ -149,8 +175,12 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
         // Generate speech
         await synthesizeSpeech(assistantResponse);
 
-        // Send viseme data to WebSocket for lip-sync
-        await wsClientRef.current.sendVisemeRequest(assistantResponse);
+        // Send viseme data to WebSocket for lip-sync (optional)
+        try {
+          await wsClientRef.current.sendVisemeRequest(assistantResponse);
+        } catch {
+          /* no duplex backend — the rig derives lip movement from live audio */
+        }
       } catch (err) {
         console.error('[v0] Error processing message:', err);
         setError(err instanceof Error ? err.message : 'Unknown error');
@@ -183,8 +213,12 @@ export function useAiAssistant(options: UseAiAssistantOptions) {
 
         const audioBuffer = await response.arrayBuffer();
 
-        // Send audio to WebSocket
-        await wsClientRef.current.sendAudio(audioBuffer, 16000);
+        // Best-effort: the duplex socket is optional, playback is not.
+        try {
+          await wsClientRef.current.sendAudio(audioBuffer, 16000);
+        } catch {
+          /* no duplex backend — continue with local playback */
+        }
 
         // Play audio locally
         if (!audioContextRef.current) {

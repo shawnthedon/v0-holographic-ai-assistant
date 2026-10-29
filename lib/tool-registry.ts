@@ -36,7 +36,7 @@ export interface ToolExecutionResult {
 class ToolRegistry {
   private tools: Map<string, ToolDefinition> = new Map();
   private rateLimitMap: Map<string, number[]> = new Map();
-  private executionTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private executionTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   /**
    * Register a tool

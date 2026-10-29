@@ -107,6 +107,7 @@ export function ScanHeader({
   status,
   subjectId,
   clock,
+  uptime,
 }: {
   mode: number;
   onCycle: (direction: 1 | -1) => void;
@@ -114,6 +115,7 @@ export function ScanHeader({
   status: string;
   subjectId: string;
   clock: string;
+  uptime?: string;
 }) {
   const labelRef = useRef<HTMLSpanElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -188,6 +190,11 @@ export function ScanHeader({
         <div className="flex items-center gap-2">
           <span className="hud-dot" data-state={status === 'LIVE' ? 'live' : 'idle'} />
           <span className="hidden sm:inline">{status}</span>
+          {uptime && (
+            <span className="hidden items-center gap-1 text-[color:var(--hud-ink-dim)] sm:flex">
+              up <span className="tabular-nums text-[color:var(--hud-ink)]/80">{uptime}</span>
+            </span>
+          )}
           <span className="tabular-nums text-[color:var(--hud-ink)]/80">{clock}</span>
         </div>
       </div>

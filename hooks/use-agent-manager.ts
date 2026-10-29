@@ -61,7 +61,9 @@ export function useAgentManager() {
       }
 
       const agentList = await response.json();
-      const agentMap = new Map(agentList.map((a: AgentState) => [a.id, a]));
+      const agentMap = new Map<string, AgentState>(
+        (agentList as AgentState[]).map((agent) => [agent.id, agent] as const),
+      );
       setAgents(agentMap);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
