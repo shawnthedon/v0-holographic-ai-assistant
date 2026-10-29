@@ -87,6 +87,37 @@ Every failure is a machine-readable contract — `{ error, code, fix }`:
 full audit, the issues found and the remediation for each are in
 [`docs/LLM_VERIFICATION.md`](docs/LLM_VERIFICATION.md).
 
+## On-device models — offline, in the browser
+
+The console can also run a model **on the user's own machine**, with no network after install.
+Open the dock → **Local AI** (`OFFLINE MODEL BAY`):
+
+- **Import** any `.gguf` file, or **download** a preset (SmolLM2 135M/360M, Qwen2.5 0.5B,
+  Llama 3.2 1B/3B, DeepSeek-R1-Distill 1.5B) — or resolve the *current* filename and size for
+  any Hugging Face repo before downloading.
+- **Validation is real**: the GGUF container is parsed (magic, version, metadata, tensor table,
+  architecture), so a renamed file is rejected. Partial downloads are never installed.
+- **Streamed downloads** to origin-private storage with measured progress, pause/cancel and
+  resume — resume is only offered when the host actually supports byte ranges.
+- **Load / unload / delete** with explicit persisted states, a memory ceiling check, and
+  deletion that verifies the bytes are gone.
+- Pick a local model in the model catalogue and it becomes the chat engine — or keep a cloud
+  model. **A local failure never falls back to the cloud.**
+
+Runtime: `@wllama/wllama` (llama.cpp → WebAssembly, MIT), served from this origin in two builds —
+JSPI/MEMORY64 for current engines, Asyncify compat for Safari and older browsers. Both are copied
+from the pinned dependency at build time; nothing is fetched from a CDN.
+
+Honest limits, shown in the panel rather than hidden: a browser tab has no background service
+(closing the tab stops a download), inference is CPU-only, and **local image generation is not
+implemented** — there is no diffusion runtime, so the UI reports it as unavailable instead of
+faking an image. Full report, verification evidence and the PASS/BLOCKED matrix:
+[`docs/ON_DEVICE_AI.md`](docs/ON_DEVICE_AI.md).
+
+```bash
+npm run test:device-ai   # 35 executed checks: GGUF parser, rejection paths, URL/path guards
+```
+
 ## The avatar
 
 `lib/hud/avatar-face.ts` drives a three.js face rig rendered into the projector

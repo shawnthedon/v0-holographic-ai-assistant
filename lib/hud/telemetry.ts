@@ -38,6 +38,8 @@ export type HudMetricKey =
   | 'agentsTotal'
   | 'agentsRunning'
   | 'gatewayConfigured'
+  | 'localModels'
+  | 'localLoaded'
   | 'engineReady';
 
 export type HudMetrics = Record<HudMetricKey, number>;
@@ -76,6 +78,8 @@ const DEFAULTS: HudMetrics = {
   agentsTotal: 0,
   agentsRunning: 0,
   gatewayConfigured: 0,
+  localModels: 0,
+  localLoaded: 0,
   engineReady: 0,
 };
 

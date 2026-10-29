@@ -25,3 +25,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# generated from the pinned @wllama/wllama dependency by scripts/sync-wllama-assets.mjs
+/public/vendor/wllama/

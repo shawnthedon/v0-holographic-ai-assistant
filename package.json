@@ -6,7 +6,12 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
-    "start": "next start"
+    "start": "next start",
+    "sync:runtime": "node scripts/sync-wllama-assets.mjs",
+    "prebuild": "node scripts/sync-wllama-assets.mjs",
+    "predev": "node scripts/sync-wllama-assets.mjs",
+    "postinstall": "node scripts/sync-wllama-assets.mjs",
+    "test:device-ai": "node scripts/test-device-ai.mjs"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "latest",
@@ -47,6 +52,8 @@
     "@react-navigation/native": "^7.3.5",
     "@react-navigation/stack": "^7.10.7",
     "@vercel/analytics": "1.3.1",
+    "@wllama/wllama": "3.8.1",
+    "@wllama/wllama-compat": "3.8.1",
     "animejs": "^4.5.0",
     "autoprefixer": "^10.4.20",
     "axios": "^1.18.1",
@@ -82,10 +89,10 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.182.0",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",
-    "typescript": "^5",
-    "@types/three": "^0.182.0"
+    "typescript": "^5"
   }
 }
