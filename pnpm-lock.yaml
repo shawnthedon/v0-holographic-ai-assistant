@@ -122,6 +122,12 @@ importers:
       '@vercel/analytics':
         specifier: 1.3.1
         version: 1.3.1(next@16.0.10(@babel/core@7.29.7)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0)
+      '@wllama/wllama':
+        specifier: 3.8.1
+        version: 3.8.1
+      '@wllama/wllama-compat':
+        specifier: 3.8.1
+        version: 3.8.1
       animejs:
         specifier: ^4.5.0
         version: 4.5.0(@types/three@0.182.0)(three@0.182.0)
@@ -1991,6 +1997,12 @@ packages:
 
   '@webgpu/types@0.1.74':
     resolution: {integrity: sha512-lgiI4hbuLcI9unnm2cL/tvCaQU45dp0xcLWJh5uB/9MBGvIA4F8XIk7nSiBeg+K4xWGYwgZKn80LmERI5CxoTA==}
+
+  '@wllama/wllama-compat@3.8.1':
+    resolution: {integrity: sha512-IvmjrJ+JzDbt3w1FQq1yAmnFEiLGCceowK2Q80zW+k9ChFkPBM1ByX/9xm2xVxyd8MHC50VpuDo6SDE83k9kIQ==}
+
+  '@wllama/wllama@3.8.1':
+    resolution: {integrity: sha512-Pl7BEJhPU8OHnV/yhn3DFZYhLLOdSHh+4TND79WCftHnlUAdQPAsyc/CfIOY+4mVxvf5VW3Xw3Uf7BBfotS1gw==}
 
   '@xmldom/xmldom@0.8.13':
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
@@ -5960,6 +5972,10 @@ snapshots:
       react: 19.2.0
 
   '@webgpu/types@0.1.74': {}
+
+  '@wllama/wllama-compat@3.8.1': {}
+
+  '@wllama/wllama@3.8.1': {}
 
   '@xmldom/xmldom@0.8.13': {}
 
